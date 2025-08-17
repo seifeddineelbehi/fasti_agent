@@ -26,7 +26,8 @@ class _AddSavedPlacePageState extends ConsumerState<AddSavedPlacePage> {
   // Map related variables
   LatLng? selectedLocation;
   final CameraPosition _kGooglePlex = const CameraPosition(
-    target: LatLng(33.8869, 9.5375), // Tunisia coordinates
+    target:
+        LatLng(20.526066985755115, -10.612497677626447), // Tunisia coordinates
     zoom: 6,
   );
 

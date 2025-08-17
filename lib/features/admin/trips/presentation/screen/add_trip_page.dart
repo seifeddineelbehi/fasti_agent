@@ -35,7 +35,8 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
   // Map related variables
   LatLng? pickLocation;
   final CameraPosition _kGooglePlex = const CameraPosition(
-    target: LatLng(33.8869, 9.5375), // Tunisia coordinates
+    target:
+        LatLng(20.526066985755115, -10.612497677626447), // Tunisia coordinates
     zoom: 6,
   );
 
@@ -231,6 +232,8 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
     required double longitude,
   }) async {
     try {
+      print(latitude);
+      print(longitude);
       final address =
           await ref.read(tripsNotifierProvider.notifier).fetchAddressFromLatLng(
                 latitude: latitude,
