@@ -1,0 +1,184 @@
+// agents_remote_data_source.dart
+import 'dart:async';
+import 'dart:developer';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fasti_dashboard/features/admin/agents/data/model/agent_model.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:injectable/injectable.dart';
+
+@injectable
+@singleton
+class AgentsRemoteDataSource {
+  final FirebaseFirestore _fireStore;
+  final FirebaseAuth _firebaseAuth;
+
+  AgentsRemoteDataSource(this._fireStore, this._firebaseAuth);
+
+  static const String _collection = 'agents';
+
+  Future<List<AgentModel>> getAllAgents() async {
+    try {
+      final querySnapshot = await _fireStore.collection(_collection).get();
+
+      return querySnapshot.docs
+          .map((doc) => AgentModel.fromJson(doc.data()))
+          .toList();
+    } catch (e) {
+      log("getAllAgents error: $e");
+      rethrow;
+    }
+  }
+
+  Future<AgentModel?> getAgentById({required String agentId}) async {
+    try {
+      final doc = await _fireStore.collection(_collection).doc(agentId).get();
+      if (doc.exists && doc.data() != null) {
+        return AgentModel.fromJson(doc.data()!);
+      }
+      return null;
+    } catch (e) {
+      log("getAgentById error: $e");
+      rethrow;
+    }
+  }
+
+  Future<AgentModel> createAgent({
+    required CreateAgentRequestModel request,
+  }) async {
+    try {
+      // Create user in Firebase Auth
+      final userCredential = await _firebaseAuth.createUserWithEmailAndPassword(
+        email: request.email,
+        password: request.password,
+      );
+
+      final uid = userCredential.user!.uid;
+      final now = DateTime.now();
+
+      // Get current admin info (you might want to pass this from the provider)
+      final currentUser = _firebaseAuth.currentUser;
+
+      final agent = AgentModel(
+        id: uid,
+        firstName: request.firstName,
+        lastName: request.lastName,
+        email: request.email,
+        phone: request.phone,
+        photoUrl: request.photoUrl,
+        role: request.role,
+        permissions: request.permissions,
+        createdAt: now,
+        createdByAdminId: currentUser?.uid ?? '',
+        createdByAdminName:
+            currentUser?.displayName ?? currentUser?.email ?? 'Admin',
+      );
+
+      // Save agent data to Firestore
+      await _fireStore
+          .collection(_collection)
+          .doc(uid)
+          .set(agent.toJsonForFirestore());
+
+      return agent;
+    } catch (e) {
+      log("createAgent error: $e");
+      rethrow;
+    }
+  }
+
+  Future<AgentModel?> updateAgent({
+    required String agentId,
+    required Map<String, dynamic> updates,
+  }) async {
+    try {
+      final docRef = _fireStore.collection(_collection).doc(agentId);
+      final doc = await docRef.get();
+
+      if (doc.exists && doc.data() != null) {
+        await docRef.update(updates);
+
+        // Return updated agent
+        final updatedDoc = await docRef.get();
+        return AgentModel.fromJson(updatedDoc.data()!);
+      }
+      return null;
+    } catch (e) {
+      log("updateAgent error: $e");
+      rethrow;
+    }
+  }
+
+  Future<AgentModel?> toggleAgentStatus({required String agentId}) async {
+    try {
+      final docRef = _fireStore.collection(_collection).doc(agentId);
+      final doc = await docRef.get();
+
+      if (doc.exists && doc.data() != null) {
+        final agent = AgentModel.fromJson(doc.data()!);
+        await docRef.update({'isActive': !agent.isActive});
+
+        return agent.copyWith(isActive: !agent.isActive);
+      }
+      return null;
+    } catch (e) {
+      log("toggleAgentStatus error: $e");
+      rethrow;
+    }
+  }
+
+  Future<bool> deleteAgent({required String agentId}) async {
+    try {
+      // Delete from Firestore
+      await _fireStore.collection(_collection).doc(agentId).delete();
+
+      // Note: You might also want to delete from Firebase Auth
+      // This requires admin SDK or special handling
+
+      return true;
+    } catch (e) {
+      log("deleteAgent error: $e");
+      rethrow;
+    }
+  }
+
+  Future<AgentModel?> updateAgentPermissions({
+    required String agentId,
+    required List<String> permissions,
+  }) async {
+    try {
+      final docRef = _fireStore.collection(_collection).doc(agentId);
+      final doc = await docRef.get();
+
+      if (doc.exists && doc.data() != null) {
+        await docRef.update({'permissions': permissions});
+
+        // Return updated agent
+        final updatedDoc = await docRef.get();
+        return AgentModel.fromJson(updatedDoc.data()!);
+      }
+      return null;
+    } catch (e) {
+      log("updateAgentPermissions error: $e");
+      rethrow;
+    }
+  }
+
+  Future<AgentModel?> updateLastLogin({required String agentId}) async {
+    try {
+      final docRef = _fireStore.collection(_collection).doc(agentId);
+      await docRef.update({
+        'lastLoginAt': DateTime.now().toIso8601String(),
+      });
+
+      final doc = await docRef.get();
+      if (doc.exists && doc.data() != null) {
+        return AgentModel.fromJson(doc.data()!);
+      }
+      return null;
+    } catch (e) {
+      log("updateLastLogin error: $e");
+      rethrow;
+    }
+  }
+}

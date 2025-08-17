@@ -1,0 +1,146 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fasti_dashboard/core/network/network_info.dart';
+import 'package:fasti_dashboard/features/admin/agents/data/data_source/agents_remote_data_source.dart';
+import 'package:fasti_dashboard/features/admin/agents/data/repositories/agents_repository_impl.dart';
+import 'package:fasti_dashboard/features/admin/cars/data/data_source/cars_remote_data_source.dart';
+import 'package:fasti_dashboard/features/admin/cars/data/data_source/image_upload_service.dart';
+import 'package:fasti_dashboard/features/admin/cars/data/repositories/cars_repository_impl.dart';
+import 'package:fasti_dashboard/features/admin/dashboard/data/data_source/dashboard_remote_data_source.dart';
+import 'package:fasti_dashboard/features/admin/dashboard/data/repositories/dashboard_repository_impl.dart';
+import 'package:fasti_dashboard/features/admin/drivers/data/data_source/drivers_remote_data_source.dart';
+import 'package:fasti_dashboard/features/admin/drivers/data/repositories/drivers_repository_impl.dart';
+import 'package:fasti_dashboard/features/admin/rents/data/data_source/rents_remote_data_source.dart';
+import 'package:fasti_dashboard/features/admin/rents/data/repositories/rents_repository_impl.dart';
+import 'package:fasti_dashboard/features/admin/trips/data/data_source/trips_remote_data_source.dart';
+import 'package:fasti_dashboard/features/admin/trips/data/repositories/trips_repository_impl.dart';
+import 'package:fasti_dashboard/features/admin/users/data/data_source/users_remote_data_source.dart';
+import 'package:fasti_dashboard/features/admin/users/data/repositories/users_repository_impl.dart';
+import 'package:fasti_dashboard/features/auth/data/data_source/auth_cached_data_source.dart';
+import 'package:fasti_dashboard/features/auth/data/data_source/auth_remote_data_source.dart';
+import 'package:fasti_dashboard/features/auth/data/repositories/auth_repository_impl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+// Firebase providers
+final firebaseAuthProvider =
+    Provider<FirebaseAuth>((ref) => FirebaseAuth.instance);
+final firestoreProvider =
+    Provider<FirebaseFirestore>((ref) => FirebaseFirestore.instance);
+final storageProvider =
+    Provider<FirebaseStorage>((ref) => FirebaseStorage.instance);
+// Data sources providers
+final networkInfoImplSourceProvider = Provider<NetworkInfoImpl>((ref) {
+  return NetworkInfoImpl();
+});
+final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
+  throw UnimplementedError('sharedPreferencesProvider must be overridden');
+});
+
+final authRemoteDataSourceProvider = Provider<AuthRemoteDataSource>((ref) {
+  return AuthRemoteDataSource(
+    ref.watch(firebaseAuthProvider),
+    ref.watch(firestoreProvider),
+  );
+});
+
+final tripsRemoteDataSourceProvider = Provider<TripsRemoteDataSource>((ref) {
+  return TripsRemoteDataSource(
+    ref.watch(firestoreProvider),
+  );
+});
+final carsRemoteDataSourceProvider = Provider<CarsRemoteDataSource>((ref) {
+  return CarsRemoteDataSource(
+    ref.watch(firestoreProvider),
+  );
+});
+final rentsRemoteDataSourceProvider = Provider<RentsRemoteDataSource>((ref) {
+  return RentsRemoteDataSource(
+    ref.watch(firestoreProvider),
+  );
+});
+
+final authLocalDataSourceProvider = Provider<AuthCachedDataSource>((ref) {
+  return AuthCachedDataSource(
+    ref.watch(sharedPreferencesProvider),
+  );
+});
+
+final usersRemoteDataSourceProvider = Provider<UsersRemoteDataSource>((ref) {
+  return UsersRemoteDataSource(
+    ref.watch(firestoreProvider),
+  );
+});
+
+final agentsRemoteDataSource = Provider<AgentsRemoteDataSource>((ref) {
+  return AgentsRemoteDataSource(
+    ref.watch(firestoreProvider),
+    ref.watch(firebaseAuthProvider),
+  );
+});
+final driversRemoteDataSourceProvider =
+    Provider<DriversRemoteDataSource>((ref) {
+  return DriversRemoteDataSource(
+    ref.watch(firestoreProvider),
+  );
+});
+
+final dashboardRemoteDataSourceProvider =
+    Provider<DashboardRemoteDataSource>((ref) {
+  return DashboardRemoteDataSource(ref.read(firestoreProvider));
+});
+final usersRepositoryProvider = Provider<UsersRepositoryImpl>((ref) {
+  return UsersRepositoryImpl(
+      remoteDataSource: ref.watch(usersRemoteDataSourceProvider),
+      networkInfoImpl: ref.watch(networkInfoImplSourceProvider));
+});
+
+final driversRepositoryProvider = Provider<DriversRepositoryImpl>((ref) {
+  return DriversRepositoryImpl(
+      remoteDataSource: ref.watch(driversRemoteDataSourceProvider),
+      networkInfoImpl: ref.watch(networkInfoImplSourceProvider));
+});
+
+final tripsRepositoryProvider = Provider<TripsRepositoryImpl>((ref) {
+  return TripsRepositoryImpl(
+      remoteDataSource: ref.watch(tripsRemoteDataSourceProvider),
+      networkInfoImpl: ref.watch(networkInfoImplSourceProvider));
+});
+
+final carsRepositoryProvider = Provider<CarsRepositoryImpl>((ref) {
+  return CarsRepositoryImpl(
+      remoteDataSource: ref.watch(carsRemoteDataSourceProvider),
+      networkInfoImpl: ref.watch(networkInfoImplSourceProvider));
+});
+
+final rentsRepositoryProvider = Provider<RentsRepositoryImpl>((ref) {
+  return RentsRepositoryImpl(
+      remoteDataSource: ref.watch(rentsRemoteDataSourceProvider),
+      networkInfoImpl: ref.watch(networkInfoImplSourceProvider));
+});
+
+// Repository providers
+final authRepositoryProvider = Provider<AuthRepositoryImpl>((ref) {
+  return AuthRepositoryImpl(
+      remoteDataSource: ref.watch(authRemoteDataSourceProvider),
+      localCachedSource: ref.watch(authLocalDataSourceProvider),
+      networkInfoImpl: ref.watch(networkInfoImplSourceProvider));
+});
+
+final dashboardRepositoryProvider = Provider<DashboardRepositoryImpl>((ref) {
+  return DashboardRepositoryImpl(
+      remoteDataSource: ref.watch(dashboardRemoteDataSourceProvider),
+      networkInfoImpl: ref.watch(networkInfoImplSourceProvider));
+});
+
+final agentsRepositoryProvider = Provider<AgentsRepositoryImpl>((ref) {
+  return AgentsRepositoryImpl(
+      remoteDataSource: ref.watch(agentsRemoteDataSource),
+      networkInfoImpl: ref.watch(networkInfoImplSourceProvider));
+});
+
+final imageUploadServiceProvider = Provider<ImageUploadService>((ref) {
+  final storage = ref.read(storageProvider);
+  return ImageUploadService(storage);
+});

@@ -1,0 +1,166 @@
+// agents_provider.dart
+import 'package:fasti_dashboard/core/providers/providers.dart';
+import 'package:fasti_dashboard/features/admin/agents/data/model/agent_model.dart';
+import 'package:fasti_dashboard/features/admin/agents/data/model/create_agent_request_model.dart';
+import 'package:fasti_dashboard/features/admin/agents/presentation/riverpod/agents_state.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class AgentsNotifier extends StateNotifier<AgentsState> {
+  final Ref ref;
+
+  AgentsNotifier(this.ref) : super(const AgentsState());
+
+  Future<void> getAllAgents() async {
+    state = state.copyWith(failure: null, isGettingAllAgentsLoading: true);
+    final result = await ref.read(agentsRepositoryProvider).getAllAgents();
+
+    result.fold(
+      (failure) {
+        state = state.copyWith(
+            failure: failure, isGettingAllAgentsLoading: false, agents: []);
+      },
+      (agents) async {
+        state =
+            state.copyWith(agents: agents, isGettingAllAgentsLoading: false);
+      },
+    );
+  }
+
+  Future<void> getAgentById({required String agentId}) async {
+    state = state.copyWith(failure: null, isGettingAgentLoading: true);
+    final result =
+        await ref.read(agentsRepositoryProvider).getAgentById(agentId: agentId);
+
+    result.fold(
+      (failure) {
+        state = state.copyWith(
+            failure: failure, isGettingAgentLoading: false, agent: null);
+      },
+      (agent) async {
+        state = state.copyWith(agent: agent, isGettingAgentLoading: false);
+      },
+    );
+  }
+
+  Future<void> createAgent({
+    required CreateAgentRequestModel request,
+  }) async {
+    state = state.copyWith(failure: null, isCreatingAgentLoading: true);
+    final result =
+        await ref.read(agentsRepositoryProvider).createAgent(request: request);
+
+    result.fold(
+      (failure) {
+        state = state.copyWith(failure: failure, isCreatingAgentLoading: false);
+      },
+      (agent) async {
+        // Create a NEW mutable list instead of trying to modify the existing one
+        final List<AgentModel> updatedAgents = [
+          ...(state.agents ?? []),
+          agent,
+        ];
+
+        state = state.copyWith(
+            agents: updatedAgents, isCreatingAgentLoading: false);
+      },
+    );
+  }
+
+  Future<void> updateAgent({
+    required String agentId,
+    required Map<String, dynamic> updates,
+  }) async {
+    state = state.copyWith(failure: null, isUpdatingAgentLoading: true);
+    final result = await ref
+        .read(agentsRepositoryProvider)
+        .updateAgent(agentId: agentId, updates: updates);
+
+    result.fold(
+      (failure) {
+        state = state.copyWith(failure: failure, isUpdatingAgentLoading: false);
+      },
+      (agent) async {
+        List<AgentModel> agents = state.agents ?? [];
+        final index = agents.indexWhere((element) => element.id == agent.id);
+        if (index != -1) {
+          agents[index] = agent;
+        }
+        state = state.copyWith(
+            agents: agents, agent: agent, isUpdatingAgentLoading: false);
+      },
+    );
+  }
+
+  Future<void> toggleAgentStatus({
+    required String agentId,
+  }) async {
+    state = state.copyWith(failure: null, isUpdatingAgentLoading: true);
+    final result = await ref
+        .read(agentsRepositoryProvider)
+        .toggleAgentStatus(agentId: agentId);
+
+    result.fold(
+      (failure) {
+        state = state.copyWith(failure: failure, isUpdatingAgentLoading: false);
+      },
+      (agent) async {
+        List<AgentModel> agents = state.agents ?? [];
+        final index = agents.indexWhere((element) => element.id == agent.id);
+        if (index != -1) {
+          agents[index] = agent;
+        }
+        state = state.copyWith(
+            agents: agents, agent: agent, isUpdatingAgentLoading: false);
+      },
+    );
+  }
+
+  Future<void> deleteAgent({
+    required String agentId,
+  }) async {
+    state = state.copyWith(failure: null, isDeletingAgentLoading: true);
+    final result =
+        await ref.read(agentsRepositoryProvider).deleteAgent(agentId: agentId);
+
+    result.fold(
+      (failure) {
+        state = state.copyWith(failure: failure, isDeletingAgentLoading: false);
+      },
+      (success) async {
+        List<AgentModel> agents = state.agents ?? [];
+        agents.removeWhere((element) => element.id == agentId);
+        state = state.copyWith(agents: agents, isDeletingAgentLoading: false);
+      },
+    );
+  }
+
+  Future<void> updateAgentPermissions({
+    required String agentId,
+    required List<String> permissions,
+  }) async {
+    state = state.copyWith(failure: null, isUpdatingAgentLoading: true);
+    final result = await ref
+        .read(agentsRepositoryProvider)
+        .updateAgentPermissions(agentId: agentId, permissions: permissions);
+
+    result.fold(
+      (failure) {
+        state = state.copyWith(failure: failure, isUpdatingAgentLoading: false);
+      },
+      (agent) async {
+        List<AgentModel> agents = state.agents ?? [];
+        final index = agents.indexWhere((element) => element.id == agent.id);
+        if (index != -1) {
+          agents[index] = agent;
+        }
+        state = state.copyWith(
+            agents: agents, agent: agent, isUpdatingAgentLoading: false);
+      },
+    );
+  }
+}
+
+final agentsNotifierProvider =
+    StateNotifierProvider<AgentsNotifier, AgentsState>((ref) {
+  return AgentsNotifier(ref);
+});

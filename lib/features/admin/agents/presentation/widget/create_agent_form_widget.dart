@@ -1,0 +1,320 @@
+import 'package:fasti_dashboard/features/admin/agents/data/model/agent_model.dart';
+import 'package:fasti_dashboard/features/admin/agents/data/model/create_agent_request_model.dart';
+import 'package:flutter/material.dart';
+import 'package:gap/gap.dart';
+
+class CreateAgentFormWidget extends StatefulWidget {
+  final bool isLoading;
+  final Function(CreateAgentRequestModel) onSubmit;
+  final VoidCallback onCancel;
+
+  const CreateAgentFormWidget({
+    super.key,
+    required this.isLoading,
+    required this.onSubmit,
+    required this.onCancel,
+  });
+
+  @override
+  State<CreateAgentFormWidget> createState() => _CreateAgentFormWidgetState();
+}
+
+class _CreateAgentFormWidgetState extends State<CreateAgentFormWidget> {
+  final _formKey = GlobalKey<FormState>();
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  String _selectedRole = 'car_agent';
+  List<String> _selectedPermissions = [];
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize permissions for default role
+    _selectedPermissions =
+        List.from(AgentPermissions.predefinedRoles[_selectedRole]!);
+  }
+
+  @override
+  void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Basic Information Section
+          _buildSectionTitle('Basic Information'),
+          const Gap(16),
+
+          _buildBasicInfoFields(),
+          const Gap(16),
+
+          _buildPasswordField(),
+          const Gap(24),
+
+          // Role Selection Section
+          _buildSectionTitle('Role & Permissions'),
+          const Gap(16),
+
+          _buildRoleDropdown(),
+          const Gap(16),
+
+          _buildPermissionsDisplay(),
+          const Gap(24),
+
+          // Action Buttons
+          _buildActionButtons(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: Theme.of(context).textTheme.titleLarge,
+    );
+  }
+
+  Widget _buildBasicInfoFields() {
+    return Row(
+      children: [
+        Expanded(
+          child: TextFormField(
+            controller: _firstNameController,
+            decoration: const InputDecoration(
+              labelText: 'First Name',
+              border: OutlineInputBorder(),
+            ),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please enter first name';
+              }
+              return null;
+            },
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: TextFormField(
+            controller: _lastNameController,
+            decoration: const InputDecoration(
+              labelText: 'Last Name',
+              border: OutlineInputBorder(),
+            ),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please enter last name';
+              }
+              return null;
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContactFields() {
+    return Row(
+      children: [
+        Expanded(
+          child: TextFormField(
+            controller: _emailController,
+            decoration: const InputDecoration(
+              labelText: 'Email',
+              border: OutlineInputBorder(),
+            ),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please enter email';
+              }
+              if (!value.contains('@')) {
+                return 'Please enter a valid email';
+              }
+              return null;
+            },
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: TextFormField(
+            controller: _phoneController,
+            decoration: const InputDecoration(
+              labelText: 'Phone',
+              border: OutlineInputBorder(),
+            ),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please enter phone number';
+              }
+              return null;
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPasswordField() {
+    return Column(
+      children: [
+        _buildContactFields(),
+        const Gap(16),
+        TextFormField(
+          controller: _passwordController,
+          obscureText: true,
+          decoration: const InputDecoration(
+            labelText: 'Password',
+            border: OutlineInputBorder(),
+          ),
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Please enter password';
+            }
+            if (value.length < 6) {
+              return 'Password must be at least 6 characters';
+            }
+            return null;
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRoleDropdown() {
+    return DropdownButtonFormField<String>(
+      value: _selectedRole,
+      decoration: const InputDecoration(
+        labelText: 'Select Role',
+        border: OutlineInputBorder(),
+      ),
+      items: AgentPermissions.predefinedRoles.keys.map((role) {
+        return DropdownMenuItem(
+          value: role,
+          child: Text(_formatRoleName(role)),
+        );
+      }).toList(),
+      onChanged: (value) {
+        setState(() {
+          _selectedRole = value!;
+          _selectedPermissions =
+              List.from(AgentPermissions.predefinedRoles[value]!);
+        });
+      },
+    );
+  }
+
+  Widget _buildPermissionsDisplay() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Permissions for ${_formatRoleName(_selectedRole)}:',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const Gap(8),
+        Container(
+          height: 200, // Fixed height instead of Expanded
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey[300]!),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: ListView.builder(
+            itemCount: _selectedPermissions.length,
+            itemBuilder: (context, index) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check, color: Colors.green, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                          _formatPermissionName(_selectedPermissions[index])),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        TextButton(
+          onPressed: widget.onCancel,
+          child: const Text('Cancel'),
+        ),
+        const SizedBox(width: 16),
+        ElevatedButton(
+          onPressed: widget.isLoading ? null : _handleSubmit,
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 32,
+              vertical: 16,
+            ),
+          ),
+          child: widget.isLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : const Text('Create Agent'),
+        ),
+      ],
+    );
+  }
+
+  void _handleSubmit() {
+    if (_formKey.currentState!.validate()) {
+      final request = CreateAgentRequestModel(
+        firstName: _firstNameController.text.trim(),
+        lastName: _lastNameController.text.trim(),
+        email: _emailController.text.trim(),
+        phone: _phoneController.text.trim(),
+        password: _passwordController.text,
+        role: _selectedRole,
+        permissions: _selectedPermissions,
+      );
+
+      widget.onSubmit(request);
+    }
+  }
+
+  String _formatRoleName(String role) {
+    return role
+        .split('_')
+        .map((word) => word[0].toUpperCase() + word.substring(1))
+        .join(' ');
+  }
+
+  String _formatPermissionName(String permission) {
+    return permission
+        .split('_')
+        .map((word) => word[0].toUpperCase() + word.substring(1))
+        .join(' ');
+  }
+}

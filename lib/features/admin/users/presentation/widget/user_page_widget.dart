@@ -1,0 +1,815 @@
+import 'package:fasti_dashboard/core/components/common_text.dart';
+import 'package:fasti_dashboard/core/util/palette.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/user_model.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:intl/intl.dart';
+
+Widget buildUserHeader(UserModel user) {
+  return Container(
+    padding: EdgeInsets.all(24.w),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16.r),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.05),
+          blurRadius: 10,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Row(
+      children: [
+        // Profile Photo
+        Container(
+          width: 80.w,
+          height: 80.w,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.grey[300]!, width: 2),
+            image: user.photoUrl.isNotEmpty
+                ? DecorationImage(
+                    image: NetworkImage(user.photoUrl),
+                    fit: BoxFit.cover,
+                  )
+                : null,
+          ),
+          child: user.photoUrl.isEmpty
+              ? Icon(Icons.person, size: 40.sp, color: Colors.grey[400])
+              : null,
+        ),
+        SizedBox(width: 20.w),
+
+        // User Basic Info
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CommonText.textBoldWeight700(
+                text: '${user.firstName} ${user.lastName}',
+                fontSize: 24.sp,
+                color: Palette.blackColor,
+              ),
+              SizedBox(height: 6.h),
+              CommonText.textBoldWeight500(
+                text: user.phone,
+                fontSize: 16.sp,
+                color: Palette.darkGreyColor,
+              ),
+              if (user.email?.isNotEmpty == true) ...[
+                SizedBox(height: 4.h),
+                CommonText.textBoldWeight500(
+                  text: user.email!,
+                  fontSize: 16.sp,
+                  color: Palette.darkGreyColor,
+                ),
+              ],
+              SizedBox(height: 8.h),
+              // Status and Role badges
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  if (constraints.maxWidth > 400) {
+                    return Row(
+                      children: [
+                        buildUserStatusChip(user.status),
+                        SizedBox(width: 8.w),
+                        buildUserStatusChip(user.role, color: Colors.blue),
+                        if (user.isBanned) ...[
+                          SizedBox(width: 8.w),
+                          buildUserStatusChip('Banned', color: Colors.red),
+                        ],
+                      ],
+                    );
+                  } else {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        buildUserStatusChip(user.status),
+                        SizedBox(height: 8.h),
+                        Row(
+                          children: [
+                            buildUserStatusChip(user.role, color: Colors.blue),
+                            if (user.isBanned) ...[
+                              SizedBox(width: 8.w),
+                              buildUserStatusChip('Banned', color: Colors.red),
+                            ],
+                          ],
+                        ),
+                      ],
+                    );
+                  }
+                },
+              ),
+              SizedBox(height: 8.h),
+              // Wallet balance and points
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.account_balance_wallet,
+                          size: 16.sp, color: Colors.green),
+                      SizedBox(width: 4.w),
+                      CommonText.textBoldWeight600(
+                        text: "Balance: ${user.walletBalance}",
+                        fontSize: 14.sp,
+                        color: Colors.green[700],
+                      ),
+                    ],
+                  ),
+                  SizedBox(width: 16.w),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.stars, size: 16.sp, color: Colors.orange),
+                      SizedBox(width: 4.w),
+                      CommonText.textBoldWeight600(
+                        text: "Points: ${user.points}",
+                        fontSize: 14.sp,
+                        color: Colors.orange[700],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget buildUserStatusChip(String status, {Color? color}) {
+  Color chipColor = color ?? getUserStatusColor(status);
+  return Container(
+    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
+    decoration: BoxDecoration(
+      color: chipColor.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(20.r),
+      border: Border.all(color: chipColor.withOpacity(0.3)),
+    ),
+    child: CommonText.textBoldWeight600(
+      text: status.toUpperCase(),
+      fontSize: 12.sp,
+      color: chipColor,
+    ),
+  );
+}
+
+Color getUserStatusColor(String status) {
+  switch (status.toLowerCase()) {
+    case 'online':
+      return Colors.green;
+    case 'offline':
+      return Colors.grey;
+    case 'client':
+      return Colors.blue;
+    case 'agent':
+      return Colors.purple;
+    case 'banned':
+      return Colors.red;
+    default:
+      return Colors.blue;
+  }
+}
+
+Widget buildUserInfoCard(UserModel user) {
+  return buildUserCard(
+    title: 'User Information',
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        buildUserInfoRow('User ID', user.id),
+        buildUserInfoRow('First Name', user.firstName),
+        buildUserInfoRow('Last Name', user.lastName),
+        buildUserInfoRow('Phone Number', user.phone),
+        buildUserInfoRow('Email',
+            user.email?.isNotEmpty == true ? user.email! : 'Not provided'),
+        buildUserInfoRow('Role', user.role),
+        buildUserInfoRow('Status', user.status),
+        buildUserInfoRow('Account Status', user.isBanned ? 'Banned' : 'Active'),
+        buildUserInfoRow('Device Token',
+            user.deviceToken.isNotEmpty ? 'Available' : 'Not available'),
+      ],
+    ),
+  );
+}
+
+Widget buildUserActivityCard(UserModel user) {
+  return buildUserCard(
+    title: 'Activity & Statistics',
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Activity stats
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                padding: EdgeInsets.all(16.w),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                child: Column(
+                  children: [
+                    Icon(Icons.trip_origin, color: Colors.blue, size: 24.sp),
+                    SizedBox(height: 8.h),
+                    CommonText.textBoldWeight700(
+                      text: user.trips.length.toString(),
+                      fontSize: 20.sp,
+                      color: Colors.blue[700],
+                    ),
+                    CommonText.textBoldWeight500(
+                      text: 'Total Trips',
+                      fontSize: 12.sp,
+                      color: Palette.darkGreyColor,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Container(
+                padding: EdgeInsets.all(16.w),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                child: Column(
+                  children: [
+                    Icon(Icons.stars, color: Colors.orange, size: 24.sp),
+                    SizedBox(height: 8.h),
+                    CommonText.textBoldWeight700(
+                      text: user.points.toString(),
+                      fontSize: 20.sp,
+                      color: Colors.orange[700],
+                    ),
+                    CommonText.textBoldWeight500(
+                      text: 'Loyalty Points',
+                      fontSize: 12.sp,
+                      color: Palette.darkGreyColor,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 16.h),
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                padding: EdgeInsets.all(16.w),
+                decoration: BoxDecoration(
+                  color: Colors.green[50],
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                child: Column(
+                  children: [
+                    Icon(Icons.account_balance_wallet,
+                        color: Colors.green, size: 24.sp),
+                    SizedBox(height: 8.h),
+                    CommonText.textBoldWeight700(
+                      text: '${user.walletBalance} ',
+                      fontSize: 18.sp,
+                      color: Colors.green[700],
+                    ),
+                    CommonText.textBoldWeight500(
+                      text: 'Wallet Balance',
+                      fontSize: 12.sp,
+                      color: Palette.darkGreyColor,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Container(
+                padding: EdgeInsets.all(16.w),
+                decoration: BoxDecoration(
+                  color: Colors.purple[50],
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                child: Column(
+                  children: [
+                    Icon(Icons.favorite, color: Colors.purple, size: 24.sp),
+                    SizedBox(height: 8.h),
+                    CommonText.textBoldWeight700(
+                      text: user.favorites.length.toString(),
+                      fontSize: 20.sp,
+                      color: Colors.purple[700],
+                    ),
+                    CommonText.textBoldWeight500(
+                      text: 'Favorite Places',
+                      fontSize: 12.sp,
+                      color: Palette.darkGreyColor,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+Widget buildUserTransactionsCard(UserModel user) {
+  return buildUserCard(
+    title: 'Recent Transactions',
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (user.transactions.isEmpty) ...[
+          Center(
+            child: Padding(
+              padding: EdgeInsets.all(32.w),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.receipt_long,
+                    size: 48.sp,
+                    color: Colors.grey[400],
+                  ),
+                  SizedBox(height: 12.h),
+                  CommonText.textBoldWeight500(
+                    text: 'No transactions yet',
+                    fontSize: 16.sp,
+                    color: Palette.darkGreyColor,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ] else ...[
+          CommonText.textBoldWeight600(
+            text: 'Recent Transactions (${user.transactions.length})',
+            fontSize: 16.sp,
+            color: Palette.blackColor,
+          ),
+          SizedBox(height: 12.h),
+          ...user.transactions.take(5).map(
+                (transaction) => Container(
+                  margin: EdgeInsets.only(bottom: 12.h),
+                  padding: EdgeInsets.all(16.w),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(12.r),
+                    border: Border.all(color: Colors.grey[200]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: EdgeInsets.all(8.w),
+                        decoration: BoxDecoration(
+                          color: _getTransactionColor(transaction.type)
+                              .withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8.r),
+                        ),
+                        child: Icon(
+                          _getTransactionIcon(transaction.type),
+                          color: _getTransactionColor(transaction.type),
+                          size: 20.sp,
+                        ),
+                      ),
+                      SizedBox(width: 12.w),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CommonText.textBoldWeight600(
+                              text: transaction.type,
+                              fontSize: 14.sp,
+                              color: Palette.blackColor,
+                            ),
+                            CommonText.textBoldWeight400(
+                              text: 'ID: ${transaction.id}',
+                              fontSize: 12.sp,
+                              color: Palette.darkGreyColor,
+                            ),
+                          ],
+                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          CommonText.textBoldWeight600(
+                            text:
+                                '${transaction.amount.toStringAsFixed(2)} MRU',
+                            fontSize: 14.sp,
+                            color: _getTransactionColor(transaction.type),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+        ],
+      ],
+    ),
+  );
+}
+
+Widget buildUserFavoritesCard(UserModel user) {
+  return buildUserCard(
+    title: 'Favorite Locations',
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (user.favorites.isEmpty) ...[
+          Center(
+            child: Padding(
+              padding: EdgeInsets.all(32.w),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.favorite_border,
+                    size: 48.sp,
+                    color: Colors.grey[400],
+                  ),
+                  SizedBox(height: 12.h),
+                  CommonText.textBoldWeight500(
+                    text: 'No favorite locations yet',
+                    fontSize: 16.sp,
+                    color: Palette.darkGreyColor,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ] else ...[
+          CommonText.textBoldWeight600(
+            text: 'Saved Locations (${user.favorites.length})',
+            fontSize: 16.sp,
+            color: Palette.blackColor,
+          ),
+          SizedBox(height: 12.h),
+          ...user.favorites.take(5).map(
+                (location) => Container(
+                  margin: EdgeInsets.only(bottom: 8.h),
+                  padding: EdgeInsets.all(12.w),
+                  decoration: BoxDecoration(
+                    color: Colors.purple[50],
+                    borderRadius: BorderRadius.circular(8.r),
+                    border: Border.all(color: Colors.purple[200]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.location_on,
+                          color: Colors.purple, size: 20.sp),
+                      SizedBox(width: 8.w),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CommonText.textBoldWeight600(
+                              text: location.label,
+                              fontSize: 14.sp,
+                              color: Palette.blackColor,
+                              maxLine: 2,
+                            ),
+                            if (location.subLabel.isNotEmpty) ...[
+                              SizedBox(height: 2.h),
+                              CommonText.textBoldWeight400(
+                                text: location.subLabel,
+                                fontSize: 12.sp,
+                                color: Palette.darkGreyColor,
+                                maxLine: 2,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          if (user.favorites.length > 5) ...[
+            SizedBox(height: 8.h),
+            CommonText.textBoldWeight500(
+              text: 'And ${user.favorites.length - 5} more locations...',
+              fontSize: 12.sp,
+              color: Palette.darkGreyColor,
+            ),
+          ],
+        ],
+      ],
+    ),
+  );
+}
+
+// NEW: Rental Cars Card Widget
+Widget buildUserRentalCarsCard(UserModel user) {
+  return buildUserCard(
+    title: 'Rental Cars',
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (user.rentalCars.isEmpty) ...[
+          Center(
+            child: Padding(
+              padding: EdgeInsets.all(32.w),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.directions_car_outlined,
+                    size: 48.sp,
+                    color: Colors.grey[400],
+                  ),
+                  SizedBox(height: 12.h),
+                  CommonText.textBoldWeight500(
+                    text: 'No rental cars yet',
+                    fontSize: 16.sp,
+                    color: Palette.darkGreyColor,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ] else ...[
+          CommonText.textBoldWeight600(
+            text: 'Car Rentals (${user.rentalCars.length})',
+            fontSize: 16.sp,
+            color: Palette.blackColor,
+          ),
+          SizedBox(height: 12.h),
+          ...user.rentalCars.take(5).map(
+            (rental) {
+              DateTime startDate = DateFormat("yyyy-MM-dd hh:mm:ss")
+                  .parse(rental.reservationDateStart);
+              DateTime endDate = DateFormat("yyyy-MM-dd hh:mm:ss")
+                  .parse(rental.reservationDateEnd);
+              return Container(
+                margin: EdgeInsets.only(bottom: 12.h),
+                padding: EdgeInsets.all(16.w),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(12.r),
+                  border: Border.all(color: Colors.grey[200]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: EdgeInsets.all(8.w),
+                          decoration: BoxDecoration(
+                            color: _getRentalStatusColor(rental.status)
+                                .withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8.r),
+                          ),
+                          child: Icon(
+                            Icons.directions_car,
+                            color: _getRentalStatusColor(rental.status),
+                            size: 20.sp,
+                          ),
+                        ),
+                        SizedBox(width: 12.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              CommonText.textBoldWeight600(
+                                text: '${rental.car.brand} ${rental.car.model}',
+                                fontSize: 14.sp,
+                                color: Palette.blackColor,
+                              ),
+                              CommonText.textBoldWeight400(
+                                text: 'Reservation: ${rental.reservationId}',
+                                fontSize: 12.sp,
+                                color: Palette.darkGreyColor,
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 8.w, vertical: 4.h),
+                          decoration: BoxDecoration(
+                            color: _getRentalStatusColor(rental.status)
+                                .withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12.r),
+                            border: Border.all(
+                              color: _getRentalStatusColor(rental.status)
+                                  .withOpacity(0.3),
+                            ),
+                          ),
+                          child: CommonText.textBoldWeight600(
+                            text: rental.status.toUpperCase(),
+                            fontSize: 10.sp,
+                            color: _getRentalStatusColor(rental.status),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 12.h),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              CommonText.textBoldWeight500(
+                                text: 'Duration',
+                                fontSize: 12.sp,
+                                color: Palette.darkGreyColor,
+                              ),
+                              CommonText.textBoldWeight600(
+                                text: '${rental.numberOfDays} days',
+                                fontSize: 13.sp,
+                                color: Palette.blackColor,
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              CommonText.textBoldWeight500(
+                                text: 'With Driver',
+                                fontSize: 12.sp,
+                                color: Palette.darkGreyColor,
+                              ),
+                              CommonText.textBoldWeight600(
+                                text: rental.withDriver ? 'Yes' : 'No',
+                                fontSize: 13.sp,
+                                color: rental.withDriver
+                                    ? Colors.green[700]
+                                    : Palette.blackColor,
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              CommonText.textBoldWeight500(
+                                text: 'Total Cost',
+                                fontSize: 12.sp,
+                                color: Palette.darkGreyColor,
+                              ),
+                              CommonText.textBoldWeight600(
+                                text:
+                                    '${rental.totalCost.toStringAsFixed(2)} MRU',
+                                fontSize: 13.sp,
+                                color: Colors.green[700],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 8.h),
+                    Row(
+                      children: [
+                        Icon(Icons.calendar_today,
+                            size: 14.sp, color: Colors.grey[600]),
+                        SizedBox(width: 4.w),
+                        CommonText.textBoldWeight400(
+                          text:
+                              '${startDate.year}/${startDate.month}/${startDate.day}- ${endDate.year}/${endDate.month}/${endDate.day}',
+                          fontSize: 12.sp,
+                          color: Palette.darkGreyColor,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          if (user.rentalCars.length > 5) ...[
+            SizedBox(height: 8.h),
+            CommonText.textBoldWeight500(
+              text: 'And ${user.rentalCars.length - 5} more rentals...',
+              fontSize: 12.sp,
+              color: Palette.darkGreyColor,
+            ),
+          ],
+        ],
+      ],
+    ),
+  );
+}
+
+Widget buildUserCard({required String title, required Widget child}) {
+  return Container(
+    width: double.infinity,
+    padding: EdgeInsets.all(20.w),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16.r),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.05),
+          blurRadius: 10,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CommonText.textBoldWeight700(
+          text: title,
+          fontSize: 18.sp,
+          color: Palette.blackColor,
+        ),
+        SizedBox(height: 16.h),
+        child,
+      ],
+    ),
+  );
+}
+
+Widget buildUserInfoRow(String label, String value) {
+  return Padding(
+    padding: EdgeInsets.symmetric(vertical: 6.h),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 120.w,
+          child: CommonText.textBoldWeight600(
+            text: label,
+            fontSize: 14.sp,
+            color: Palette.blackColor,
+          ),
+        ),
+        SizedBox(width: 12.w),
+        Expanded(
+          child: CommonText.textBoldWeight500(
+            text: value.isNotEmpty ? value : '-',
+            fontSize: 14.sp,
+            color: Palette.darkGreyColor,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Color _getTransactionColor(String type) {
+  switch (type.toLowerCase()) {
+    case 'credit':
+    case 'refund':
+    case 'cashback':
+      return Colors.green;
+    case 'debit':
+    case 'payment':
+    case 'trip':
+      return Colors.red;
+    case 'pending':
+      return Colors.orange;
+    default:
+      return Colors.blue;
+  }
+}
+
+IconData _getTransactionIcon(String type) {
+  switch (type.toLowerCase()) {
+    case 'credit':
+    case 'refund':
+    case 'cashback':
+      return Icons.add_circle;
+    case 'debit':
+    case 'payment':
+    case 'trip':
+      return Icons.remove_circle;
+    case 'pending':
+      return Icons.pending;
+    default:
+      return Icons.account_balance_wallet;
+  }
+}
+
+// NEW: Helper functions for rental cars
+Color _getRentalStatusColor(String status) {
+  switch (status.toLowerCase()) {
+    case 'active':
+    case 'confirmed':
+      return Colors.green;
+    case 'pending':
+      return Colors.orange;
+    case 'completed':
+      return Colors.blue;
+    case 'cancelled':
+      return Colors.red;
+    case 'expired':
+      return Colors.grey;
+    default:
+      return Colors.blue;
+  }
+}

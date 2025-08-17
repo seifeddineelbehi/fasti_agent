@@ -1,0 +1,125 @@
+// dart format width=80
+// GENERATED CODE - DO NOT MODIFY BY HAND
+
+// **************************************************************************
+// InjectableConfigGenerator
+// **************************************************************************
+
+// ignore_for_file: type=lint
+// coverage:ignore-file
+
+// ignore_for_file: no_leading_underscores_for_library_prefixes
+import 'package:cloud_firestore/cloud_firestore.dart' as _i974;
+import 'package:firebase_auth/firebase_auth.dart' as _i59;
+import 'package:firebase_storage/firebase_storage.dart' as _i457;
+import 'package:get_it/get_it.dart' as _i174;
+import 'package:injectable/injectable.dart' as _i526;
+import 'package:shared_preferences/shared_preferences.dart' as _i460;
+
+import 'core/network/network_info.dart' as _i75;
+import 'features/admin/agents/data/data_source/agents_remote_data_source.dart'
+    as _i749;
+import 'features/admin/agents/data/repositories/agents_repository_impl.dart'
+    as _i187;
+import 'features/admin/cars/data/data_source/cars_remote_data_source.dart'
+    as _i513;
+import 'features/admin/cars/data/data_source/image_upload_service.dart'
+    as _i511;
+import 'features/admin/cars/data/repositories/cars_repository_impl.dart'
+    as _i511;
+import 'features/admin/dashboard/data/data_source/dashboard_remote_data_source.dart'
+    as _i1029;
+import 'features/admin/dashboard/data/repositories/dashboard_repository_impl.dart'
+    as _i773;
+import 'features/admin/drivers/data/data_source/drivers_remote_data_source.dart'
+    as _i355;
+import 'features/admin/drivers/data/repositories/drivers_repository_impl.dart'
+    as _i167;
+import 'features/admin/rents/data/data_source/rents_remote_data_source.dart'
+    as _i263;
+import 'features/admin/rents/data/repositories/rents_repository_impl.dart'
+    as _i660;
+import 'features/admin/trips/data/data_source/trips_remote_data_source.dart'
+    as _i13;
+import 'features/admin/trips/data/repositories/trips_repository_impl.dart'
+    as _i190;
+import 'features/admin/users/data/data_source/users_remote_data_source.dart'
+    as _i141;
+import 'features/admin/users/data/repositories/users_repository_impl.dart'
+    as _i223;
+import 'features/auth/data/data_source/auth_cached_data_source.dart' as _i447;
+import 'features/auth/data/data_source/auth_remote_data_source.dart' as _i1016;
+import 'features/auth/data/repositories/auth_repository_impl.dart' as _i111;
+
+extension GetItInjectableX on _i174.GetIt {
+// initializes the registration of main-scope dependencies inside of GetIt
+  _i174.GetIt init({
+    String? environment,
+    _i526.EnvironmentFilter? environmentFilter,
+  }) {
+    final gh = _i526.GetItHelper(
+      this,
+      environment,
+      environmentFilter,
+    );
+    gh.factory<_i511.ImageUploadService>(
+        () => _i511.ImageUploadService(gh<_i457.FirebaseStorage>()));
+    gh.factory<_i1016.AuthRemoteDataSource>(() => _i1016.AuthRemoteDataSource(
+          gh<_i59.FirebaseAuth>(),
+          gh<_i974.FirebaseFirestore>(),
+        ));
+    gh.factory<_i447.AuthCachedDataSource>(
+        () => _i447.AuthCachedDataSource(gh<_i460.SharedPreferences>()));
+    gh.factory<_i513.CarsRemoteDataSource>(
+        () => _i513.CarsRemoteDataSource(gh<_i974.FirebaseFirestore>()));
+    gh.factory<_i1029.DashboardRemoteDataSource>(
+        () => _i1029.DashboardRemoteDataSource(gh<_i974.FirebaseFirestore>()));
+    gh.factory<_i355.DriversRemoteDataSource>(
+        () => _i355.DriversRemoteDataSource(gh<_i974.FirebaseFirestore>()));
+    gh.factory<_i263.RentsRemoteDataSource>(
+        () => _i263.RentsRemoteDataSource(gh<_i974.FirebaseFirestore>()));
+    gh.factory<_i13.TripsRemoteDataSource>(
+        () => _i13.TripsRemoteDataSource(gh<_i974.FirebaseFirestore>()));
+    gh.factory<_i141.UsersRemoteDataSource>(
+        () => _i141.UsersRemoteDataSource(gh<_i974.FirebaseFirestore>()));
+    gh.factory<_i773.DashboardRepositoryImpl>(
+        () => _i773.DashboardRepositoryImpl(
+              remoteDataSource: gh<_i1029.DashboardRemoteDataSource>(),
+              networkInfoImpl: gh<_i75.NetworkInfoImpl>(),
+            ));
+    gh.factory<_i749.AgentsRemoteDataSource>(() => _i749.AgentsRemoteDataSource(
+          gh<_i974.FirebaseFirestore>(),
+          gh<_i59.FirebaseAuth>(),
+        ));
+    gh.factory<_i111.AuthRepositoryImpl>(() => _i111.AuthRepositoryImpl(
+          remoteDataSource: gh<_i1016.AuthRemoteDataSource>(),
+          localCachedSource: gh<_i447.AuthCachedDataSource>(),
+          networkInfoImpl: gh<_i75.NetworkInfoImpl>(),
+        ));
+    gh.factory<_i223.UsersRepositoryImpl>(() => _i223.UsersRepositoryImpl(
+          remoteDataSource: gh<_i141.UsersRemoteDataSource>(),
+          networkInfoImpl: gh<_i75.NetworkInfoImpl>(),
+        ));
+    gh.factory<_i660.RentsRepositoryImpl>(() => _i660.RentsRepositoryImpl(
+          remoteDataSource: gh<_i263.RentsRemoteDataSource>(),
+          networkInfoImpl: gh<_i75.NetworkInfoImpl>(),
+        ));
+    gh.factory<_i187.AgentsRepositoryImpl>(() => _i187.AgentsRepositoryImpl(
+          remoteDataSource: gh<_i749.AgentsRemoteDataSource>(),
+          networkInfoImpl: gh<_i75.NetworkInfoImpl>(),
+        ));
+    gh.factory<_i190.TripsRepositoryImpl>(() => _i190.TripsRepositoryImpl(
+          remoteDataSource: gh<_i13.TripsRemoteDataSource>(),
+          networkInfoImpl: gh<_i75.NetworkInfoImpl>(),
+        ));
+    gh.factory<_i511.CarsRepositoryImpl>(() => _i511.CarsRepositoryImpl(
+          remoteDataSource: gh<_i513.CarsRemoteDataSource>(),
+          networkInfoImpl: gh<_i75.NetworkInfoImpl>(),
+        ));
+    gh.factory<_i167.DriversRepositoryImpl>(() => _i167.DriversRepositoryImpl(
+          remoteDataSource: gh<_i355.DriversRemoteDataSource>(),
+          networkInfoImpl: gh<_i75.NetworkInfoImpl>(),
+        ));
+    return this;
+  }
+}

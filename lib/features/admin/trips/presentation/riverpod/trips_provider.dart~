@@ -1,0 +1,1004 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:developer';
+
+import 'package:fasti_dashboard/core/providers/providers.dart';
+import 'package:fasti_dashboard/core/util/helper_functions.dart';
+import 'package:fasti_dashboard/features/admin/rents/presentation/riverpod/rents_provider.dart';
+import 'package:fasti_dashboard/features/admin/trips/data/model/active_nearby_drivers_model.dart';
+import 'package:fasti_dashboard/features/admin/trips/data/model/direction_details_info_model.dart';
+import 'package:fasti_dashboard/features/admin/trips/data/model/predicted_places_model.dart';
+import 'package:fasti_dashboard/features/admin/trips/presentation/riverpod/trips_state.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/directions_model.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/driver_info_model.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/notification_model.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/trip_model.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/user_model.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/wallet_trip_payment_model.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geocoder2/geocoder2.dart';
+import 'package:http/http.dart' as http;
+
+class TripsNotifier extends StateNotifier<TripsState> {
+  final Ref ref;
+
+  TripsNotifier(this.ref) : super(const TripsState());
+
+  StreamSubscription<dynamic>? _geoFireSubscription;
+  List<ActiveNearByDriversModel> nearbyActiveDrivers = [];
+  bool activeNearbyDriverKeysLoaded = false;
+
+  // ====================== ORIGINAL TRIP MANAGEMENT ======================
+
+  Future<void> getAllTrips() async {
+    state = state.copyWith(failure: null, isGettingAllTripsLoading: true);
+    final result = await ref.read(tripsRepositoryProvider).getAllTrips();
+
+    result.fold(
+      (failure) {
+        state = state.copyWith(
+            failure: failure, isGettingAllTripsLoading: false, trips: []);
+      },
+      (trips) async {
+        state = state.copyWith(trips: trips, isGettingAllTripsLoading: false);
+      },
+    );
+  }
+
+  Future<void> getTripById({required String tripId}) async {
+    state = state.copyWith(failure: null, isGettingTripLoading: true);
+    final result =
+        await ref.read(tripsRepositoryProvider).getTripById(tripId: tripId);
+
+    result.fold(
+      (failure) {
+        state = state
+            .copyWith(failure: failure, isGettingTripLoading: false, trips: []);
+      },
+      (trip) async {
+        state = state.copyWith(trip: trip, isGettingTripLoading: false);
+      },
+    );
+  }
+
+  Future<void> endTrip({required String tripId}) async {
+    state = state.copyWith(failure: null, isGettingTripLoading: true);
+    final result =
+        await ref.read(tripsRepositoryProvider).endTrip(tripId: tripId);
+
+    result.fold(
+      (failure) {
+        state = state
+            .copyWith(failure: failure, isGettingTripLoading: false, trips: []);
+      },
+      (trip) async {
+        bool resultPay = false;
+        List<TripModel> trips = state.trips!;
+
+        final index = trips.indexWhere((element) => element.id == trip.id);
+        if (index != -1) {
+          trips[index] = trip;
+        }
+        DailyEarningModel dailyEarningModel = DailyEarningModel(
+          amount: trip.fare,
+          date: DateTime.now().toString(),
+          method: trip.paymentMethod,
+        );
+        List<DailyEarningModel> dailyEarnings = [
+          ...trip.driver.driverInfo!.dailyEarnings,
+          dailyEarningModel,
+        ];
+        if (trip.paymentMethod == "wallet") {
+          WalletTripPaymentModel walletTripPaymentModel =
+              WalletTripPaymentModel(
+            amount: trip.fare,
+            userId: trip.user.id,
+            date: DateTime.now().toString(),
+            tripId: trip.id,
+            userFullName: "${trip.user.firstName} ${trip.user.lastName}",
+            isPaidByAdmin: false,
+          );
+          List<WalletTripPaymentModel> wallet = [
+            ...trip.driver.driverInfo!.walletTripPayments,
+            walletTripPaymentModel,
+          ];
+          resultPay = await updateTwoUsers(
+            driver: trip.driver.copyWith(
+              driverInfo: trip.driver.driverInfo!.copyWith(
+                walletTripPayments: wallet,
+                dailyEarnings: dailyEarnings,
+              ),
+            ),
+            user: trip.user.copyWith(
+              walletBalance: trip.user.walletBalance - trip.fare,
+            ),
+            amount: trip.fare,
+          );
+        } else {
+          resultPay = await updateUser(
+            trip.driver.copyWith(
+              driverInfo: trip.driver.driverInfo!.copyWith(
+                dailyEarnings: dailyEarnings,
+              ),
+            ),
+          );
+        }
+        await ref.read(rentsNotifierProvider.notifier).sendNotification(
+              deviceRegistrationToken: trip.user.deviceToken,
+              title: "Trip Ended",
+              body:
+                  'The trip to go from ${trip.userPickupLocation.locationName} to '
+                  '${trip.destinationAddressNames.join(', ')} has end and the total price is ${trip.fare} MRU',
+            );
+        await ref.read(rentsNotifierProvider.notifier).sendNotification(
+              deviceRegistrationToken: trip.driver.deviceToken,
+              title: "Trip Ended",
+              body:
+                  'The trip to go from ${trip.userPickupLocation.locationName} to '
+                  '${trip.destinationAddressNames.join(', ')} has end and the total price is ${trip.fare} MRU',
+            );
+
+        state = state.copyWith(trips: trips, isGettingTripLoading: false);
+      },
+    );
+  }
+
+  Future<bool> updateTwoUsers({
+    required UserModel user,
+    required UserModel driver,
+    required double amount,
+  }) async {
+    state = state.copyWith(failure: null);
+    final result = await ref
+        .read(tripsRepositoryProvider)
+        .updateTwoUsers(user: user, driver: driver, amount: amount);
+
+    return result.fold(
+      (failure) {
+        state = state.copyWith(failure: failure);
+        return false;
+      },
+      (user) async {
+        return true;
+      },
+    );
+  }
+
+  Future<bool> updateUser(UserModel user) async {
+    state = state.copyWith(failure: null);
+    final result = await ref.read(tripsRepositoryProvider).updateUser(user);
+
+    return result.fold(
+      (failure) {
+        state = state.copyWith(failure: failure);
+        return false;
+      },
+      (user) async {
+        return true;
+      },
+    );
+  }
+
+  // ====================== ADD TRIP FUNCTIONALITY ======================
+
+  Future<TripModel?> createTrip({
+    required UserModel user,
+    required UserModel driver,
+    required double fare,
+    required String paymentMethod,
+    required bool isStopOver,
+  }) async {
+    if (state.userPickupLocation == null ||
+        state.userDropOffLocations.isEmpty) {
+      state = state.copyWith(failure: null);
+      return null;
+    }
+
+    state = state.copyWith(isCreatingTrip: true, failure: null);
+
+    try {
+      List<String> destinationNames = state.userDropOffLocations
+          .map((location) => location.locationName ?? 'Unknown Location')
+          .toList();
+
+      final tripModel = TripModel(
+        userPickupLocation: state.userPickupLocation!,
+        userDropOffLocations: state.userDropOffLocations,
+        time: DateTime.now().toString(),
+        paymentMethod: paymentMethod,
+        originAddressName:
+            state.userPickupLocation!.locationName ?? 'Unknown Location',
+        destinationAddressNames: destinationNames,
+        driver: driver,
+        user: user,
+        isStopOver: isStopOver,
+        fare: fare,
+        status: 'pending',
+        distance: state.totalDistanceMeters,
+        duration: state.totalDurationSeconds,
+      );
+      final result =
+          await ref.read(tripsRepositoryProvider).createRideRequest(tripModel);
+
+      return result.fold(
+        (failure) {
+          state = state.copyWith(failure: failure);
+          return null;
+        },
+        (trip) async {
+          await sendTripNotificationToDriver(
+            driverDeviceToken: trip.driver.deviceToken,
+            trip: trip,
+          );
+          NotificationModel notificationModel = NotificationModel(
+            body:
+                "You recieved a trip request from Fasti Agent to go from ${trip.userPickupLocation.locationName} to ${trip.destinationAddressNames.join(', ')}",
+            title:
+                "Trip Request from ${trip.user.firstName} ${trip.user.lastName}",
+            date: DateTime.now(),
+            type: "tripRequest",
+          );
+          List<NotificationModel> notifications = [
+            ...trip.driver.notifications,
+            notificationModel,
+          ];
+          await ref
+              .read(tripsRepositoryProvider)
+              .updateUser(trip.driver.copyWith(notifications: notifications));
+          // Add to local trips list
+          final List<TripModel> updatedTrips = [
+            ...state.trips ?? [],
+            tripModel
+          ];
+
+          state = state.copyWith(
+            isCreatingTrip: false,
+            trips: updatedTrips,
+            // Reset add trip form fields
+            userPickupLocation: null,
+            userDropOffLocations: [],
+            totalDistanceMeters: 0,
+            totalDurationSeconds: 0,
+          );
+
+          return trip;
+        },
+      );
+    } catch (e) {
+      state = state.copyWith(isCreatingTrip: false, failure: null);
+      return null;
+    }
+  }
+
+  // ====================== LOCATION MANAGEMENT ======================
+
+  void updatePickupLocationAddress(DirectionsModel userPickupAddress) {
+    state = state.copyWith(userPickupLocation: userPickupAddress);
+  }
+
+  void updateDropOffLocationAddress(DirectionsModel dropOffAddress, int index) {
+    final currentList = List<DirectionsModel>.from(state.userDropOffLocations);
+    if (index >= 0 && index < currentList.length) {
+      currentList[index] = dropOffAddress;
+      state = state.copyWith(userDropOffLocations: currentList);
+    }
+  }
+
+  void addDropOffLocation(DirectionsModel newDropOff) {
+    final currentList = List<DirectionsModel>.from(state.userDropOffLocations);
+    currentList.insert(0, newDropOff);
+    state = state.copyWith(userDropOffLocations: currentList);
+  }
+
+  void initDropOffLocation() {
+    if (state.userDropOffLocations.isEmpty) {
+      state = state.copyWith(userDropOffLocations: [const DirectionsModel()]);
+    }
+  }
+
+  void deleteDropOffLocationAt(int index) {
+    final currentList = List<DirectionsModel>.from(state.userDropOffLocations);
+    if (index >= 0 && index < currentList.length) {
+      currentList.removeAt(index);
+      state = state.copyWith(userDropOffLocations: currentList);
+    }
+  }
+
+  void swapDropOffAndPickupLocation() {
+    final userPickupAddress = state.userPickupLocation;
+    final dropOffList = state.userDropOffLocations;
+
+    if (dropOffList.isNotEmpty && userPickupAddress != null) {
+      final newPickup = dropOffList[0];
+      final newDropOffList = [userPickupAddress];
+
+      state = state.copyWith(
+        userPickupLocation: newPickup,
+        userDropOffLocations: newDropOffList,
+      );
+    }
+  }
+
+  void resetLocationAddresses() {
+    state = state.copyWith(
+      userPickupLocation: null,
+      userDropOffLocations: [],
+      totalDistanceMeters: 0,
+      totalDurationSeconds: 0,
+    );
+  }
+
+  // ====================== ADDRESS & GEOCODING ======================
+
+  Future<String> fetchAddressFromLatLng({
+    required double latitude,
+    required double longitude,
+    required BuildContext context,
+  }) async {
+    try {
+      state = state.copyWith(isFetchingAddress: true);
+
+      final mapKey = dotenv.env['GOOGLE_MAPS_API_KEY'];
+      if (mapKey == null) {
+        throw Exception('Google Maps API key not found');
+      }
+
+      final data = await Geocoder2.getDataFromCoordinates(
+        latitude: latitude,
+        longitude: longitude,
+        googleMapApiKey: mapKey,
+      );
+
+      final address = data.address;
+      final parts = address.split(',').map((e) => e.trim()).toList();
+      final city = data.city?.trim().toLowerCase();
+      final country = data.country?.trim().toLowerCase();
+      final plusCodeRegex = RegExp(r'^[A-Z0-9]{4,}\+[A-Z0-9]{2,}$');
+      String? streetName;
+      for (final part in parts) {
+        final partLower = part.toLowerCase();
+        if (part.isNotEmpty &&
+            !plusCodeRegex.hasMatch(part) &&
+            partLower != city &&
+            partLower != country) {
+          streetName = part;
+          break;
+        }
+      }
+
+      final cleanedAddress = (streetName == null ||
+              streetName.toLowerCase().contains(city ?? '') ||
+              streetName.toLowerCase().contains(country ?? ''))
+          ? "Unnamed Street, $city"
+          : "$streetName, $city";
+
+      state = state.copyWith(isFetchingAddress: false);
+      return cleanedAddress;
+    } catch (e) {
+      log("Error fetching address: $e");
+      state = state.copyWith(isFetchingAddress: false);
+      return 'Unknown Location';
+    }
+  }
+
+  Future<String> searchAddressForGeographicCoordinates({
+    required double latitude,
+    required double longitude,
+    required bool isCurrentUserLocation,
+  }) async {
+    state = state.copyWith(isFetchingAddress: true);
+
+    try {
+      final mapKey = dotenv.env['GOOGLE_MAPS_API_KEY'];
+      if (mapKey == null) {
+        throw Exception('Google Maps API key not found');
+      }
+
+      final apiUrl = "https://maps.googleapis.com/maps/api/geocode/json"
+          "?latlng=$latitude,$longitude&key=$mapKey";
+
+      final response = await http.get(Uri.parse(apiUrl));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final humanReadableAddress = data["results"][0]["formatted_address"];
+
+        final userAddress = DirectionsModel(
+          locationName: humanReadableAddress,
+          locationLatitude: latitude,
+          locationLongitude: longitude,
+        );
+
+        if (isCurrentUserLocation) {
+          updatePickupLocationAddress(userAddress);
+        }
+
+        state = state.copyWith(isFetchingAddress: false);
+        return humanReadableAddress;
+      } else {
+        throw Exception('Failed to fetch address');
+      }
+    } catch (e) {
+      log("Error searching address: $e");
+      state = state.copyWith(isFetchingAddress: false);
+      return 'Unknown Location';
+    }
+  }
+
+  // ====================== PLACE SEARCH & AUTOCOMPLETE ======================
+
+  Future<List<PredictedPlacesModel>> searchAddressAutoComplete({
+    required String inputText,
+    required double userLat,
+    required double userLng,
+  }) async {
+    if (inputText.length <= 2) {
+      return [];
+    }
+
+    state = state.copyWith(isSearchLoading: true);
+
+    try {
+      final mapKey = dotenv.env['GOOGLE_MAPS_API_KEY'];
+      if (mapKey == null) {
+        throw Exception('Google Maps API key not found');
+      }
+
+      final apiUrl =
+          "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+          "?location=$userLat,$userLng"
+          "&radius=20000"
+          "&keyword=$inputText"
+          "&key=$mapKey";
+
+      final response = await http.get(Uri.parse(apiUrl));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final placePredictions = data["results"] as List<dynamic>;
+
+        List<PredictedPlacesModel> places = [];
+
+        for (var json in placePredictions) {
+          final place = PredictedPlacesModel(
+            placeId: json['place_id'],
+            mainText: '${json['name']} ${json['vicinity']}',
+            latitude: json['geometry']['location']['lat']?.toDouble(),
+            longitude: json['geometry']['location']['lng']?.toDouble(),
+            secondaryText: json['vicinity'],
+          );
+
+          if (place.latitude != null && place.longitude != null) {
+            final distance = calculateDistance(
+                userLat, userLng, place.latitude!, place.longitude!);
+
+            final placeWithDistance =
+                place.copyWith(distanceInMeters: distance);
+            places.add(placeWithDistance);
+          }
+        }
+
+        places.sort((a, b) =>
+            (a.distanceInMeters ?? 0).compareTo(b.distanceInMeters ?? 0));
+
+        state = state.copyWith(isSearchLoading: false, searchResults: places);
+        return places;
+      } else {
+        throw Exception('Search failed');
+      }
+    } catch (e) {
+      log("Error searching places: $e");
+      state = state.copyWith(isSearchLoading: false);
+      return [];
+    }
+  }
+
+  Future<List<PredictedPlacesModel>> getNearbyPlaces({
+    required double userLat,
+    required double userLng,
+    required String type,
+  }) async {
+    state = state.copyWith(isSearchLoading: true);
+
+    try {
+      final mapKey = dotenv.env['GOOGLE_MAPS_API_KEY'];
+      if (mapKey == null) {
+        throw Exception('Google Maps API key not found');
+      }
+
+      final url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+          "?location=$userLat,$userLng"
+          "&radius=5000"
+          "&type=$type"
+          "&key=$mapKey";
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final results = data['results'] as List<dynamic>;
+        List<PredictedPlacesModel> places = [];
+
+        for (var json in results) {
+          final place = PredictedPlacesModel(
+            placeId: json['place_id'],
+            mainText: '${json['name']} ${json['vicinity']}',
+            latitude: json['geometry']['location']['lat']?.toDouble(),
+            longitude: json['geometry']['location']['lng']?.toDouble(),
+            secondaryText: json['vicinity'],
+          );
+
+          if (place.latitude != null && place.longitude != null) {
+            final distance = calculateDistance(
+                userLat, userLng, place.latitude!, place.longitude!);
+
+            final placeWithDistance =
+                place.copyWith(distanceInMeters: distance);
+            places.add(placeWithDistance);
+          }
+        }
+
+        places.sort((a, b) =>
+            (a.distanceInMeters ?? 0).compareTo(b.distanceInMeters ?? 0));
+
+        state = state.copyWith(isSearchLoading: false, searchResults: places);
+        return places;
+      } else {
+        throw Exception('Failed to fetch nearby places');
+      }
+    } catch (e) {
+      log("Error fetching nearby places: $e");
+      state = state.copyWith(isSearchLoading: false);
+      return [];
+    }
+  }
+
+  // ====================== DIRECTIONS & ROUTING ======================
+
+  Future<DirectionDetailInfoModel?> obtainOriginToDestinationDirectionDetails(
+    double originLat,
+    double originLng,
+    double destinationLat,
+    double destinationLng,
+  ) async {
+    try {
+      final mapKey = dotenv.env['GOOGLE_MAPS_API_KEY'];
+      if (mapKey == null) {
+        throw Exception('Google Maps API key not found');
+      }
+
+      final url = "https://maps.googleapis.com/maps/api/directions/json"
+          "?origin=$originLat,$originLng"
+          "&destination=$destinationLat,$destinationLng"
+          "&key=$mapKey";
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (data['routes'] != null && data['routes'].isNotEmpty) {
+          final route = data['routes'][0];
+          final leg = route['legs'][0];
+
+          final directionDetails = DirectionDetailInfoModel(
+            ePoints: route['overview_polyline']['points'],
+            distanceText: leg['distance']['text'],
+            distanceValue: leg['distance']['value'],
+            durationText: leg['duration']['text'],
+            durationValue: leg['duration']['value'],
+          );
+
+          updateTripDirectionDetailsInfo(directionDetails);
+          return directionDetails;
+        }
+      }
+      return null;
+    } catch (e) {
+      log("Error getting directions: $e");
+      return null;
+    }
+  }
+
+  void updateTripDirectionDetailsInfo(
+      DirectionDetailInfoModel directionDetailInfoModel) {
+    state = state.copyWith(tripDirectionDetailsInfo: directionDetailInfoModel);
+  }
+
+  void updateTotalDistanceMeters(int distance) {
+    state = state.copyWith(
+        totalDistanceMeters: state.totalDistanceMeters + distance);
+  }
+
+  void updateTotalDurationSeconds(int duration) {
+    state = state.copyWith(
+        totalDurationSeconds: state.totalDurationSeconds + duration);
+  }
+
+  void resetTotalDistanceMeters() {
+    state = state.copyWith(totalDistanceMeters: 0);
+  }
+
+  void resetTotalDurationSeconds() {
+    state = state.copyWith(totalDurationSeconds: 0);
+  }
+
+  // ====================== SAVED PLACES ======================
+
+  void loadSavedPlaces() {
+    final defaultPlaces = [
+      {
+        'name': 'Office',
+        'address': 'Downtown Business District',
+        'icon': 'business',
+        'type': 'work',
+        'latitude': 33.8869,
+        'longitude': 9.5375,
+      },
+      {
+        'name': 'Home',
+        'address': 'Residential Area',
+        'icon': 'home',
+        'type': 'home',
+        'latitude': 33.8900,
+        'longitude': 9.5400,
+      },
+      {
+        'name': 'Airport',
+        'address': 'Tunis-Carthage Airport',
+        'icon': 'flight',
+        'type': 'airport',
+        'latitude': 36.8510,
+        'longitude': 10.2272,
+      },
+    ];
+
+    state = state.copyWith(savedPlaces: defaultPlaces);
+  }
+
+  void addSavedPlace(Map<String, dynamic> place) {
+    final updatedPlaces = [...state.savedPlaces, place];
+    state = state.copyWith(savedPlaces: updatedPlaces);
+  }
+
+  void removeSavedPlace(int index) {
+    final updatedPlaces = [...state.savedPlaces];
+    if (index >= 0 && index < updatedPlaces.length) {
+      updatedPlaces.removeAt(index);
+      state = state.copyWith(savedPlaces: updatedPlaces);
+    }
+  }
+
+  // ====================== UTILITY METHODS ======================
+
+  void clearFailure() {
+    state = state.copyWith(failure: null);
+  }
+
+  void clearSearchResults() {
+    state = state.copyWith(searchResults: []);
+  }
+
+  void clearAddTripData() {
+    state = state.copyWith(
+      userPickupLocation: null,
+      userDropOffLocations: [],
+      totalDistanceMeters: 0,
+      totalDurationSeconds: 0,
+      searchResults: [],
+    );
+  }
+
+  // Add these methods to your existing TripsNotifier class
+
+// ====================== DRIVER MANAGEMENT FOR AGENT (WEB-COMPATIBLE) ======================
+
+  Future<List<UserModel>> fetchNearbyDriversForLocation({
+    required double latitude,
+    required double longitude,
+    double radiusKm = 10.0,
+  }) async {
+    state = state.copyWith(isGettingNearbyDriversLoading: true);
+
+    try {
+      // Query Firebase Realtime Database for active drivers
+      List<UserModel> nearbyDrivers = await _fetchActiveDriversFromRealtimeDB(
+        centerLat: latitude,
+        centerLng: longitude,
+        radiusKm: radiusKm,
+      );
+
+      state = state.copyWith(
+        isGettingNearbyDriversLoading: false,
+        nearbyDrivers: nearbyDrivers,
+      );
+
+      return nearbyDrivers;
+    } catch (e,s) {
+      print("Error fetching nearby drivers: $e, $s");
+      state = state.copyWith(
+        isGettingNearbyDriversLoading: false,
+        failure: null,
+      );
+      return <UserModel>[];
+    }
+  }
+
+  Future<List<UserModel>> _fetchActiveDriversFromRealtimeDB({
+    required double centerLat,
+    required double centerLng,
+    required double radiusKm,
+  }) async {
+    try {
+      // Get reference to the activeDrivers node in Realtime Database
+      DatabaseReference activeDriversRef =
+          FirebaseDatabase.instance.ref().child("activeDrivers");
+
+      // Get all active drivers data
+      DatabaseEvent event = await activeDriversRef.once();
+      DataSnapshot snapshot = event.snapshot;
+
+      if (!snapshot.exists || snapshot.value == null) {
+        print("No active drivers found in Realtime Database");
+        return [];
+      }
+
+      Map<dynamic, dynamic> activeDriversData =
+          snapshot.value as Map<dynamic, dynamic>;
+      List<String> nearbyDriverIds = [];
+
+      // Filter drivers by distance
+      activeDriversData.forEach((driverId, locationData) {
+        if (locationData != null) {
+          // GeoFire stores location in 'g' field as [latitude, longitude]
+          var geoData = locationData['l'];
+          if (geoData != null && geoData is List && geoData.length >= 2) {
+            double driverLat = geoData[0].toDouble();
+            double driverLng = geoData[1].toDouble();
+
+            // Calculate distance from pickup location
+            double distance =
+                calculateDistance(centerLat, centerLng, driverLat, driverLng);
+            double distanceKm = distance / 1000;
+
+            if (distanceKm <= radiusKm) {
+              nearbyDriverIds.add(driverId.toString());
+              print(
+                  "Found nearby driver: $driverId at ${distanceKm.toStringAsFixed(1)}km");
+            }
+          }
+        }
+      });
+
+      if (nearbyDriverIds.isEmpty) {
+        print("No drivers found within ${radiusKm}km radius");
+        return [];
+      }
+
+      // Fetch full driver details from Firestore
+      List<UserModel> nearbyDrivers =
+          await _fetchDriverDetailsFromIds(nearbyDriverIds);
+
+      // Sort by distance from pickup location
+      nearbyDrivers.sort((a, b) {
+        if (a.location == null || b.location == null) return 0;
+
+        double distanceA = calculateDistance(
+          centerLat,
+          centerLng,
+          a.location!.latitude,
+          a.location!.longitude,
+        );
+        double distanceB = calculateDistance(
+          centerLat,
+          centerLng,
+          b.location!.latitude,
+          b.location!.longitude,
+        );
+        return distanceA.compareTo(distanceB);
+      });
+
+      return nearbyDrivers;
+    } catch (e) {
+      print("Error fetching from Realtime Database: $e");
+      return [];
+    }
+  }
+
+  Future<List<UserModel>> _fetchDriverDetailsFromIds(
+      List<String> driverIds) async {
+    List<UserModel> driverDetails = [];
+
+    for (String driverId in driverIds) {
+      try {
+        final result = await ref
+            .read(tripsRepositoryProvider)
+            .getDriverById(driverId: driverId);
+
+        await result.fold(
+          (failure) {
+            print("Failed to fetch driver $driverId: $failure");
+          },
+          (driverData) {
+            if (driverData != null &&
+                driverData.driverInfo != null &&
+                driverData.driverInfo!.availableStatus &&
+                driverData.driverInfo!.approvedStatus == "approved") {
+              // Update driver location from Realtime Database if needed
+              driverDetails.add(driverData);
+              print(
+                  "Added driver: ${driverData.firstName} ${driverData.lastName}");
+            }
+          },
+        );
+      } catch (e) {
+        print("Error fetching driver $driverId: $e");
+      }
+    }
+
+    return driverDetails;
+  }
+
+// Real-time listener for driver location updates (optional)
+  StreamSubscription<DatabaseEvent>? _activeDriversSubscription;
+
+  void startListeningToActiveDrivers({
+    required double centerLat,
+    required double centerLng,
+    required double radiusKm,
+    required Function(List<UserModel>) onDriversUpdated,
+  }) {
+    try {
+      DatabaseReference activeDriversRef =
+          FirebaseDatabase.instance.ref().child("activeDrivers");
+
+      _activeDriversSubscription =
+          activeDriversRef.onValue.listen((DatabaseEvent event) {
+        if (event.snapshot.exists && event.snapshot.value != null) {
+          _processActiveDriversUpdate(
+            event.snapshot.value as Map<dynamic, dynamic>,
+            centerLat,
+            centerLng,
+            radiusKm,
+            onDriversUpdated,
+          );
+        }
+      });
+    } catch (e) {
+      print("Error setting up real-time listener: $e");
+    }
+  }
+
+  void _processActiveDriversUpdate(
+    Map<dynamic, dynamic> activeDriversData,
+    double centerLat,
+    double centerLng,
+    double radiusKm,
+    Function(List<UserModel>) onDriversUpdated,
+  ) async {
+    List<String> nearbyDriverIds = [];
+
+    activeDriversData.forEach((driverId, locationData) {
+      if (locationData != null && locationData is Map) {
+        var geoData = locationData['g'];
+        if (geoData != null && geoData is List && geoData.length >= 2) {
+          double driverLat = geoData[0].toDouble();
+          double driverLng = geoData[1].toDouble();
+
+          double distance =
+              calculateDistance(centerLat, centerLng, driverLat, driverLng);
+          double distanceKm = distance / 1000;
+
+          if (distanceKm <= radiusKm) {
+            nearbyDriverIds.add(driverId.toString());
+          }
+        }
+      }
+    });
+
+    List<UserModel> nearbyDrivers =
+        await _fetchDriverDetailsFromIds(nearbyDriverIds);
+    onDriversUpdated(nearbyDrivers);
+  }
+
+  void stopListeningToActiveDrivers() {
+    _activeDriversSubscription?.cancel();
+    _activeDriversSubscription = null;
+  }
+
+// Calculate estimated fare based on distance and vehicle type
+  double calculateEstimatedFare({
+    required int distanceMeters,
+    required int durationSeconds,
+    required String vehicleType,
+    required bool isStopover,
+  }) {
+    double baseFare = 5.0; // Base fare in MRU
+    double perKmRate = 2.0; // Rate per kilometer
+    double perMinuteRate = 0.5; // Rate per minute
+
+    // Adjust rates based on vehicle type
+    switch (vehicleType.toLowerCase()) {
+      case 'suv':
+      case 'comfort':
+        baseFare *= 1.3;
+        perKmRate *= 1.3;
+        break;
+      case 'luxury':
+        baseFare *= 1.6;
+        perKmRate *= 1.6;
+        break;
+      default:
+        break;
+    }
+
+    double distanceKm = distanceMeters / 1000.0;
+    double durationMinutes = durationSeconds / 60.0;
+
+    double fare =
+        baseFare + (distanceKm * perKmRate) + (durationMinutes * perMinuteRate);
+
+    if (isStopover) {
+      fare += 10.0;
+    }
+
+    return fare;
+  }
+
+// Send notification to driver about new trip request
+  Future<void> sendTripNotificationToDriver({
+    required String driverDeviceToken,
+    required TripModel trip,
+  }) async {
+    try {
+      final result = await ref.read(tripsRepositoryProvider).getAccessToken();
+
+      await result.fold(
+        (failure) {
+          print("Failed to get access token: $failure");
+        },
+        (accessToken) async {
+          String dropOffString = trip.destinationAddressNames.join(', ');
+
+          final notificationResult = await ref
+              .read(tripsRepositoryProvider)
+              .sendTripCallNotification(
+                user: trip.user,
+                deviceRegistrationToken: driverDeviceToken,
+                userTripRequestId: trip.id,
+                serverAccessTokenKey: accessToken,
+                dropOffString: dropOffString,
+                locationName: trip.userPickupLocation.locationName ?? "Unknown",
+              );
+
+          await notificationResult.fold(
+            (failure) {
+              print("Failed to send notification: $failure");
+            },
+            (success) {
+              print(
+                  "Notification sent successfully to driver: ${trip.driver.firstName}");
+            },
+          );
+        },
+      );
+    } catch (e) {
+      print("Error sending notification to driver: $e");
+    }
+  }
+
+// Clean up resources
+  @override
+  void dispose() {
+    stopListeningToActiveDrivers();
+    super.dispose();
+  }
+}
+
+final tripsNotifierProvider =
+    StateNotifierProvider<TripsNotifier, TripsState>((ref) {
+  return TripsNotifier(ref);
+});

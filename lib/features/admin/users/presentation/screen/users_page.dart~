@@ -1,0 +1,203 @@
+import 'package:fasti_dashboard/core/util/palette.dart';
+import 'package:fasti_dashboard/features/admin/users/presentation/riverpod/users_provider.dart';
+import 'package:fasti_dashboard/features/admin/users/presentation/widget/users_table_widget.dart';
+import 'package:fasti_dashboard/widgets/content_view.dart';
+import 'package:fasti_dashboard/widgets/page_header.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gap/gap.dart';
+
+class UsersPage extends ConsumerStatefulWidget {
+  const UsersPage({super.key});
+
+  @override
+  ConsumerState<UsersPage> createState() => _UsersPageState();
+}
+
+class _UsersPageState extends ConsumerState<UsersPage> {
+  bool isLoading = false;
+  TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((timeStamp) async {
+      setState(() {
+        isLoading = true;
+      });
+
+      await ref.read(usersNotifierProvider.notifier).getAllUsers();
+      setState(() {
+        isLoading = false;
+      });
+    });
+
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.trim().toLowerCase();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final users = ref.watch(usersNotifierProvider).users ?? [];
+
+    // Filter users where driverInfo is null (regular users/clients)
+    final clientUsers = users.where((user) => user.driverInfo == null).toList();
+
+    // Filter by search query
+    final filteredUsers = clientUsers.where((user) {
+      final fullName =
+          '${user.firstName ?? ''} ${user.lastName ?? ''}'.toLowerCase();
+      return fullName.contains(_searchQuery);
+    }).toList();
+
+    return isLoading
+        ? Center(
+            child: CircularProgressIndicator(
+              color: Palette.mainDarkColor,
+            ),
+          )
+        : Scaffold(
+            backgroundColor: Colors.grey[50],
+            body: ContentView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const PageHeader(
+                    title: 'Users',
+                    description: 'List of registered users (clients).',
+                  ),
+                  const Gap(16),
+                  TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Search users...',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value.toLowerCase();
+                      });
+                    },
+                  ),
+                  const Gap(16),
+                  // Stats row
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              children: [
+                                Text(
+                                  'Total Users',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  clientUsers.length.toString(),
+                                  style: const TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              children: [
+                                Text(
+                                  'Active Users',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  clientUsers
+                                      .where((u) => u.status == 'online')
+                                      .length
+                                      .toString(),
+                                  style: const TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              children: [
+                                Text(
+                                  'Banned Users',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  clientUsers
+                                      .where((u) => u.isBanned)
+                                      .length
+                                      .toString(),
+                                  style: const TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.red,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Gap(16),
+                  Expanded(
+                    child: Card(
+                      clipBehavior: Clip.antiAlias,
+                      child: UsersTableWidget(
+                        users: filteredUsers,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+  }
+}

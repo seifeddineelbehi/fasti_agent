@@ -1,0 +1,107 @@
+import 'dart:async';
+
+import 'package:fasti_dashboard/core/providers/providers.dart';
+import 'package:fasti_dashboard/features/admin/trips/presentation/riverpod/saved_places/saved_places_state.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/location_model.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class SavedPlacesNotifier extends StateNotifier<SavedPlacesState> {
+  final Ref ref;
+  // final SavedPlacesRemoteDataSource _dataSource;
+
+  SavedPlacesNotifier(this.ref) : super(const SavedPlacesState());
+
+  Future<void> getAllSavedPlaces() async {
+    state = state.copyWith(isLoading: true, error: null);
+    final result = await ref.read(tripsRepositoryProvider).getAllSavedPlaces();
+    result.fold(
+      (failure) {
+        state =
+            state.copyWith(failure: failure, isLoading: false, savedPlaces: []);
+      },
+      (places) async {
+        state = state.copyWith(savedPlaces: places, isLoading: false);
+      },
+    );
+  }
+
+  Future<bool> addSavedPlace(LocationModel place) async {
+    state = state.copyWith(isSaving: true, error: null);
+
+    final result = await ref.read(tripsRepositoryProvider).addSavedPlace(place);
+    return result.fold(
+      (failure) {
+        state = state.copyWith(failure: failure, isSaving: false);
+        return false;
+      },
+      (place) async {
+        final updatedPlaces = [...state.savedPlaces, place];
+        state = state.copyWith(
+          isSaving: false,
+          savedPlaces: updatedPlaces,
+        );
+        return true;
+      },
+    );
+  }
+
+  Future<bool> deleteSavedPlace(int index) async {
+    if (index < 0 || index >= state.savedPlaces.length) return false;
+
+    state = state.copyWith(isLoading: true, error: null);
+
+    final result = await ref
+        .read(tripsRepositoryProvider)
+        .deleteSavedPlace(placeId: state.savedPlaces[index].id);
+    return result.fold(
+      (failure) {
+        state = state.copyWith(failure: failure, isSaving: false);
+        return false;
+      },
+      (place) async {
+        final updatedPlaces = [...state.savedPlaces];
+        updatedPlaces.removeAt(index);
+
+        state = state.copyWith(
+          isLoading: false,
+          savedPlaces: updatedPlaces,
+        );
+        return true;
+      },
+    ); // Simulate deletion
+  }
+
+  Future<bool> updateSavedPlace(int index, LocationModel updatedPlace) async {
+    if (index < 0 || index >= state.savedPlaces.length) return false;
+
+    state = state.copyWith(isSaving: true, error: null);
+
+    final result = await ref
+        .read(tripsRepositoryProvider)
+        .updateSavedPlace(state.savedPlaces[index].id, updatedPlace);
+    return result.fold(
+      (failure) {
+        state = state.copyWith(failure: failure, isSaving: false);
+        return false;
+      },
+      (place) async {
+        final updatedPlaces = [...state.savedPlaces];
+        updatedPlaces[index] = updatedPlace;
+        state = state.copyWith(
+          isSaving: false,
+          savedPlaces: updatedPlaces,
+        );
+        return true;
+      },
+    );
+  }
+
+  void clearError() {
+    state = state.copyWith(error: null);
+  }
+}
+
+final savedPlacesProvider =
+    StateNotifierProvider<SavedPlacesNotifier, SavedPlacesState>((ref) {
+  return SavedPlacesNotifier(ref);
+});

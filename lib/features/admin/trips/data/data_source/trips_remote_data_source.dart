@@ -1,0 +1,333 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:developer';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/location_model.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/trip_model.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/user_model.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:googleapis_auth/auth_io.dart';
+import 'package:googleapis_auth/googleapis_auth.dart' as auth;
+import 'package:http/http.dart' as http;
+import 'package:injectable/injectable.dart';
+
+@injectable
+@singleton
+class TripsRemoteDataSource {
+  final FirebaseFirestore _fireStore;
+
+  TripsRemoteDataSource(this._fireStore);
+  static const String _collectionTransactions = 'transactions';
+
+  static const String _collection = 'trip_requests';
+  static const String _collectionUsers = 'users';
+  static const String _savedPlacesCollection = 'saved_places';
+
+  Future<List<TripModel>> getAllTrips() async {
+    try {
+      final querySnapshot = await _fireStore.collection(_collection).get();
+
+      return querySnapshot.docs.map((doc) {
+        return TripModel.fromJson(doc.data());
+      }).toList();
+    } catch (e, s) {
+      log("getUsersWithoutApprovedDriverInfo error: $e");
+      rethrow;
+    }
+  }
+
+  Future<TripModel?> getTripById({required String tripId}) async {
+    final doc = await _fireStore.collection(_collection).doc(tripId).get();
+    if (doc.exists && doc.data() != null) {
+      return TripModel.fromJson(doc.data()!);
+    }
+    return null;
+  }
+
+  Future<TripModel?> endTrip({required String tripId}) async {
+    final docRef = _fireStore.collection(_collection).doc(tripId);
+    final doc = await docRef.get();
+
+    if (doc.exists && doc.data() != null) {
+      final trip = TripModel.fromJson(doc.data()!);
+      await docRef.update({
+        'status': 'ended',
+      });
+
+      // Return the updated user
+      return trip.copyWith(
+        status: 'ended',
+      );
+    }
+    return null;
+  }
+
+  Future<List<UserModel>> updateTwoUsers({
+    required UserModel user,
+    required UserModel driver,
+    required double amount,
+  }) async {
+    WriteBatch batch = _fireStore.batch();
+
+    // 🔄 Fetch latest user data from Firestore
+    final userSnapshot =
+        await _fireStore.collection(_collectionUsers).doc(user.id).get();
+
+    if (!userSnapshot.exists) {
+      throw Exception("User not found");
+    }
+
+    final latestUser = UserModel.fromJson(userSnapshot.data()!);
+
+    // 💸 Subtract amount from the latest wallet balance
+    final updatedUser = latestUser.copyWith(
+      walletBalance: latestUser.walletBalance - amount,
+    );
+
+    // 🔁 Prepare updates
+    DocumentReference doc1 =
+        _fireStore.collection(_collectionUsers).doc(updatedUser.id);
+    DocumentReference doc2 =
+        _fireStore.collection(_collectionUsers).doc(driver.id);
+
+    batch.update(doc1, updatedUser.toJsonForFirestore());
+    batch.update(doc2, driver.toJsonForFirestore());
+
+    // ✅ Commit batch
+    await batch.commit();
+
+    return [updatedUser, driver];
+  }
+
+  Future<UserModel> updateUser(UserModel user) async {
+    await _fireStore
+        .collection(_collection)
+        .doc(user.id)
+        .update(user.toJsonForFirestore());
+    return user;
+  }
+
+  Future<UserModel?> getDriverById({required String driverId}) async {
+    try {
+      final doc =
+          await _fireStore.collection(_collectionUsers).doc(driverId).get();
+      if (doc.exists && doc.data() != null) {
+        return UserModel.fromJson(doc.data()!);
+      }
+      return null;
+    } catch (e) {
+      throw Exception('getDriverById error: $e');
+    }
+  }
+
+  Future<String> getAccessToken() async {
+    try {
+      final serviceAccountJson = {
+        "type": dotenv.env['PUSH_NOTIFICATION_TYPE'],
+        "project_id": dotenv.env['PUSH_NOTIFICATION_PROJECT_ID'],
+        "private_key_id": dotenv.env['PUSH_NOTIFICATION_PRIVATE_KEY_ID'],
+        "private_key": dotenv.env['PUSH_NOTIFICATION_PRIVATE_KEY']
+            ?.replaceAll(r'\n', '\n'),
+        "client_email": dotenv.env['PUSH_NOTIFICATION_CLIENT_EMAIL'],
+        "client_id": dotenv.env['PUSH_NOTIFICATION_CLIENT_ID'],
+        "auth_uri": dotenv.env['PUSH_NOTIFICATION_AUTH_URI'],
+        "token_uri": dotenv.env['PUSH_NOTIFICATION_TOKEN_URI'],
+        "auth_provider_x509_cert_url":
+            dotenv.env['PUSH_NOTIFICATION_AUTH_PROVIDER_X509_CERT_URL'],
+        "client_x509_cert_url":
+            dotenv.env['PUSH_NOTIFICATION_CLIENT_X509_CERT_URL'],
+      };
+
+      final scopes = ['https://www.googleapis.com/auth/firebase.messaging'];
+
+      final client = await clientViaServiceAccount(
+        auth.ServiceAccountCredentials.fromJson(serviceAccountJson),
+        scopes,
+      );
+
+      final credentials = await obtainAccessCredentialsViaServiceAccount(
+        auth.ServiceAccountCredentials.fromJson(serviceAccountJson),
+        scopes,
+        client,
+      );
+      client.close();
+
+      return credentials.accessToken.data;
+    } catch (e) {
+      throw Exception('getAccessToken error: $e');
+    }
+  }
+
+  Future<bool> sendTripCallNotification({
+    required UserModel user,
+    required String deviceRegistrationToken,
+    required String userTripRequestId,
+    required String serverAccessTokenKey,
+    required String dropOffString,
+    required String locationName,
+  }) async {
+    try {
+      final endpoint =
+          'https://fcm.googleapis.com/v1/projects/${dotenv.env['PUSH_NOTIFICATION_PROJECT_ID']}/messages:send';
+
+      final message = {
+        'message': {
+          'token': deviceRegistrationToken,
+          'notification': {
+            'title': "NEW TRIP REQUEST from ${user.firstName} ${user.lastName}",
+            'body':
+                'PickUp location: $locationName \nDropOff Locations: $dropOffString',
+          },
+          'data': {
+            'tripID': userTripRequestId,
+            "click_action": "FLUTTER_NOTIFICATION_CLICK",
+            'id': "1",
+            "status": "done",
+          }
+        }
+      };
+
+      final response = await http.post(
+        Uri.parse(endpoint),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $serverAccessTokenKey',
+        },
+        body: jsonEncode(message),
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        throw Exception(
+            'sendNotification failed with status: ${response.statusCode}, body: ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('sendNotification error: $e');
+    }
+  }
+
+  Future<TripModel> createTripRequest(TripModel rideRequest) async {
+    try {
+      final docRef = _fireStore.collection(_collection).doc();
+      final rideRequestWithId = rideRequest.copyWith(id: docRef.id);
+      await docRef.set(rideRequestWithId.toJsonForFirestore());
+      return rideRequestWithId;
+    } catch (e) {
+      throw Exception('createTripRequest error: $e');
+    }
+  }
+
+//Saved places
+  Future<List<LocationModel>> getAllSavedPlaces() async {
+    try {
+      final querySnapshot =
+          await _fireStore.collection(_savedPlacesCollection).get();
+
+      return querySnapshot.docs.map((doc) {
+        final data = doc.data();
+        return LocationModel(
+          id: data['id'],
+          latitude: data['latitude']?.toDouble() ?? 0.0,
+          longitude: data['longitude']?.toDouble() ?? 0.0,
+          label: data['label'] ?? '',
+          subLabel: data['subLabel'] ?? '',
+        );
+      }).toList();
+    } catch (e, s) {
+      log("getAllSavedPlaces error: $e");
+      rethrow;
+    }
+  }
+
+  Future<LocationModel> addSavedPlace(LocationModel place) async {
+    try {
+      final docRef = _fireStore.collection(_savedPlacesCollection).doc();
+
+      final placeData = {
+        'id': docRef.id,
+        'latitude': place.latitude,
+        'longitude': place.longitude,
+        'label': place.label,
+        'subLabel': place.subLabel,
+      };
+
+      await docRef.set(placeData);
+
+      return place;
+    } catch (e) {
+      log("addSavedPlace error: $e");
+      throw Exception('Failed to add saved place: $e');
+    }
+  }
+
+  Future<void> deleteSavedPlace(String placeId) async {
+    try {
+      await _fireStore.collection(_savedPlacesCollection).doc(placeId).delete();
+    } catch (e) {
+      log("deleteSavedPlace error: $e");
+      throw Exception('Failed to delete saved place: $e');
+    }
+  }
+
+  Future<LocationModel> updateSavedPlace(
+      String placeId, LocationModel place) async {
+    try {
+      final placeData = {
+        'latitude': place.latitude,
+        'longitude': place.longitude,
+        'label': place.label,
+        'subLabel': place.subLabel,
+      };
+
+      await _fireStore
+          .collection(_savedPlacesCollection)
+          .doc(placeId)
+          .update(placeData);
+
+      return place;
+    } catch (e) {
+      log("updateSavedPlace error: $e");
+      throw Exception('Failed to update saved place: $e');
+    }
+  }
+
+  Future<LocationModel?> getSavedPlaceById(String placeId) async {
+    try {
+      final doc = await _fireStore
+          .collection(_savedPlacesCollection)
+          .doc(placeId)
+          .get();
+
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        return LocationModel(
+          id: data['id'],
+          latitude: data['latitude']?.toDouble() ?? 0.0,
+          longitude: data['longitude']?.toDouble() ?? 0.0,
+          label: data['label'] ?? '',
+          subLabel: data['subLabel'] ?? '',
+        );
+      }
+
+      return null;
+    } catch (e) {
+      log("getSavedPlaceById error: $e");
+      throw Exception('Failed to get saved place: $e');
+    }
+  }
+
+  Future<dynamic> receiveRequest({required String url}) async {
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Request failed with status: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('receiveRequest error: $e');
+    }
+  }
+}

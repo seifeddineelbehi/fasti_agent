@@ -1,0 +1,39 @@
+import 'package:fasti_dashboard/core/error/failures.dart';
+import 'package:fasti_dashboard/features/auth/data/model/admin_model.dart';
+import 'package:fasti_dashboard/features/auth/data/model/auth_user_model.dart';
+
+class AuthState {
+  final bool isLoading;
+  final bool isOtpSent;
+  final AuthUserModel? authUser;
+  final AdminModel? admin;
+  final Failure? failure;
+  final String? verificationId;
+
+  const AuthState({
+    this.isLoading = false,
+    this.isOtpSent = false,
+    this.authUser,
+    this.admin,
+    this.failure,
+    this.verificationId,
+  });
+
+  AuthState copyWith({
+    bool? isLoading,
+    bool? isOtpSent,
+    AuthUserModel? authUser,
+    AdminModel? admin,
+    Failure? failure,
+    String? verificationId,
+  }) {
+    return AuthState(
+      isLoading: isLoading ?? this.isLoading,
+      isOtpSent: isOtpSent ?? this.isOtpSent,
+      authUser: authUser ?? this.authUser,
+      admin: admin ?? this.admin,
+      failure: failure ?? this.failure,
+      verificationId: verificationId ?? this.verificationId,
+    );
+  }
+}

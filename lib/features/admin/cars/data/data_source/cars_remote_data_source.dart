@@ -1,0 +1,81 @@
+import 'dart:async';
+import 'dart:developer';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fasti_dashboard/features/admin/cars/data/model/car_model.dart';
+import 'package:injectable/injectable.dart';
+
+@injectable
+@singleton
+class CarsRemoteDataSource {
+  final FirebaseFirestore _fireStore;
+
+  CarsRemoteDataSource(this._fireStore);
+
+  static const String _collection = 'cars';
+
+  Future<List<CarModel>> getAllCars() async {
+    try {
+      final querySnapshot = await _fireStore.collection(_collection).get();
+
+      return querySnapshot.docs
+          .map((doc) => CarModel.fromJson(doc.data()))
+          .toList();
+    } catch (e) {
+      log("getUsersWithoutApprovedDriverInfo error: $e");
+      rethrow;
+    }
+  }
+
+  Future<CarModel?> getCarById({required String carId}) async {
+    final doc = await _fireStore.collection(_collection).doc(carId).get();
+    if (doc.exists && doc.data() != null) {
+      return CarModel.fromJson(doc.data()!);
+    }
+    return null;
+  }
+
+  Future<CarModel> createCar({required CarModel car}) async {
+    try {
+      final docRef = _fireStore.collection(_collection).doc();
+      final carWithId = car.copyWith(id: docRef.id);
+      final carData = carWithId.toJsonForFirestore();
+      await docRef.set(carData);
+
+      // Return the created car
+      return carWithId
+          .copyWith(rentalPeriods: []); // Ensure empty rental periods
+    } catch (e) {
+      throw Exception('Failed to create car: $e');
+    }
+  }
+
+  Future<CarModel?> toggleCarAvailability({required String carId}) async {
+    try {
+      final DocumentReference carRef =
+          _fireStore.collection(_collection).doc(carId);
+
+      return await _fireStore.runTransaction((transaction) async {
+        final DocumentSnapshot snapshot = await transaction.get(carRef);
+
+        if (!snapshot.exists) {
+          throw Exception('Car not found');
+        }
+
+        final data = snapshot.data() as Map<String, dynamic>;
+        data['id'] = snapshot.id;
+        final car = CarModel.fromJson(data);
+
+        // Toggle availability
+        final updatedCar = car.copyWith(isAvailable: !car.isAvailable);
+
+        // Update in Firestore
+        transaction.update(carRef, {'isAvailable': updatedCar.isAvailable});
+
+        return updatedCar;
+      });
+    } catch (e) {
+      throw Exception('Failed to toggle car availability: $e');
+    }
+  }
+}

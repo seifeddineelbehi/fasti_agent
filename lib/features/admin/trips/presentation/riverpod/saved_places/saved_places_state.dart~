@@ -1,0 +1,31 @@
+import 'package:fasti_dashboard/core/error/failures.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/location_model.dart';
+
+class SavedPlacesState {
+  final List<LocationModel> savedPlaces;
+  final bool isLoading;
+  final bool isSaving;
+  final String? error;
+  final Failure? failure;
+  const SavedPlacesState({
+    this.savedPlaces = const [],
+    this.isLoading = false,
+    this.isSaving = false,
+    this.error,this.failure,
+  });
+
+  SavedPlacesState copyWith({
+    List<LocationModel>? savedPlaces,
+    bool? isLoading,
+    bool? isSaving,
+    String? error, Failure? failure,
+  }) {
+    return SavedPlacesState(
+      savedPlaces: savedPlaces ?? this.savedPlaces,
+      isLoading: isLoading ?? this.isLoading,
+      isSaving: isSaving ?? this.isSaving,
+      error: error ?? this.error,
+      failure: failure ?? this.failure,
+    );
+  }
+}

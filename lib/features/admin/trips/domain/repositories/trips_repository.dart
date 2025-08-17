@@ -1,0 +1,36 @@
+import 'package:dartz/dartz.dart';
+import 'package:fasti_dashboard/core/error/failures.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/location_model.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/trip_model.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/user_model.dart';
+
+abstract class TripsRepository {
+  Future<Either<Failure, List<TripModel>>> getAllTrips();
+  Future<Either<Failure, TripModel>> getTripById({required String tripId});
+  Future<Either<Failure, TripModel>> endTrip({required String tripId});
+  Future<Either<Failure, List<UserModel>>> updateTwoUsers({
+    required UserModel user,
+    required UserModel driver,
+    required double amount,
+  });
+  Future<Either<Failure, TripModel>> createRideRequest(TripModel rideRequest);
+  Future<Either<Failure, UserModel>> updateUser(UserModel user);
+  Future<Either<Failure, UserModel?>> getDriverById({required String driverId});
+  Future<Either<Failure, String>> getAccessToken();
+  Future<Either<Failure, bool>> sendTripCallNotification({
+    required UserModel user,
+    required String deviceRegistrationToken,
+    required String userTripRequestId,
+    required String serverAccessTokenKey,
+    required String dropOffString,
+    required String locationName,
+  });
+
+  Future<Either<Failure, List<LocationModel>>> getAllSavedPlaces();
+  Future<Either<Failure, LocationModel>> addSavedPlace(LocationModel place);
+  Future<Either<Failure, bool>> deleteSavedPlace({required String placeId});
+  Future<Either<Failure, LocationModel>> updateSavedPlace(
+      String placeId, LocationModel place);
+  Future<Either<Failure, LocationModel>> getSavedPlaceById(String placeId);
+  Future<Either<Failure, dynamic>> receiveRequest({required String url});
+}

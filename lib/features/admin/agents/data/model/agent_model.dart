@@ -1,0 +1,150 @@
+// agent_model.dart
+import 'package:freezed_annotation/freezed_annotation.dart';
+
+part 'agent_model.freezed.dart';
+part 'agent_model.g.dart';
+
+@freezed
+class AgentModel with _$AgentModel {
+  const factory AgentModel({
+    required String id,
+    required String firstName,
+    required String lastName,
+    required String email,
+    required String phone,
+    @Default('') String photoUrl,
+    @Default(true) bool isActive,
+    required String role, // 'super_admin', 'car_agent', 'trip_agent', etc.
+    required List<String> permissions,
+    required DateTime createdAt,
+    DateTime? lastLoginAt,
+    @Default('') String createdByAdminId,
+    @Default('') String createdByAdminName,
+  }) = _AgentModel;
+
+  factory AgentModel.fromJson(Map<String, dynamic> json) =>
+      _$AgentModelFromJson(json);
+}
+
+extension AgentModelFirestore on AgentModel {
+  Map<String, dynamic> toJsonForFirestore() {
+    return {
+      'id': id,
+      'firstName': firstName,
+      'lastName': lastName,
+      'email': email,
+      'phone': phone,
+      'photoUrl': photoUrl,
+      'isActive': isActive,
+      'role': role,
+      'permissions': permissions,
+      'createdAt': createdAt.toIso8601String(),
+      'lastLoginAt': lastLoginAt?.toIso8601String(),
+      'createdByAdminId': createdByAdminId,
+      'createdByAdminName': createdByAdminName,
+    };
+  }
+}
+
+// Update your AgentPermissions class in agent_model.dart
+
+class AgentPermissions {
+  // Car Management
+  static const String viewCars = 'view_cars';
+  static const String addCars = 'add_cars';
+  static const String editCars = 'edit_cars';
+  static const String deleteCars = 'delete_cars';
+  static const String toggleCarAvailability = 'toggle_car_availability';
+
+  // Rental Management
+  static const String viewRentals = 'view_rentals';
+  static const String confirmRentals = 'confirm_rentals';
+  static const String cancelRentals = 'cancel_rentals';
+
+  // Trip Management
+  static const String viewTrips = 'view_trips';
+  static const String endTrips = 'end_trips';
+  static const String cancelTrips = 'cancel_trips';
+
+  // Driver Management
+  static const String viewDrivers = 'view_drivers';
+  static const String approveDrivers = 'approve_drivers';
+  static const String banDrivers = 'ban_drivers';
+  static const String payDrivers = 'pay_drivers';
+
+  // User Management
+  static const String viewUsers = 'view_users';
+  static const String banUsers = 'ban_users';
+  static const String rechargeUserWallet = 'recharge_user_wallet';
+
+  // Agent Management (Super Admin only)
+  static const String viewAgents = 'view_agents';
+  static const String createAgents = 'create_agents';
+  static const String editAgents = 'edit_agents';
+  static const String deleteAgents = 'delete_agents';
+
+  // Marketing Permission - NEW
+  static const String viewDashboard = 'view_dashboard';
+
+  // All permissions list
+  static const List<String> allPermissions = [
+    viewCars,
+    addCars,
+    editCars,
+    deleteCars,
+    toggleCarAvailability,
+    viewRentals,
+    confirmRentals,
+    cancelRentals,
+    viewTrips,
+    endTrips,
+    cancelTrips,
+    viewDrivers,
+    approveDrivers,
+    banDrivers,
+    payDrivers,
+    viewUsers,
+    banUsers,
+    rechargeUserWallet,
+    viewAgents,
+    createAgents,
+    editAgents,
+    deleteAgents,
+    viewDashboard, // NEW
+  ];
+
+  // Predefined roles
+  static const Map<String, List<String>> predefinedRoles = {
+    'super_admin': allPermissions,
+    'car_agent': [
+      viewCars,
+      addCars,
+      editCars,
+      toggleCarAvailability,
+      viewRentals,
+      confirmRentals,
+      cancelRentals,
+    ],
+    'trip_agent': [
+      viewTrips,
+      endTrips,
+      cancelTrips,
+      viewDrivers,
+      payDrivers,
+    ],
+    'user_support_agent': [
+      viewUsers,
+      rechargeUserWallet,
+      viewDrivers,
+    ],
+    'driver_manager': [
+      viewDrivers,
+      approveDrivers,
+      banDrivers,
+      payDrivers,
+    ],
+    'marketing_agent': [
+      viewDashboard, // Only marketing agents can see dashboard
+    ],
+  };
+}

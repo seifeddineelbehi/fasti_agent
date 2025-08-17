@@ -1,0 +1,122 @@
+import 'package:dartz/dartz.dart';
+import 'package:fasti_dashboard/core/error/failures.dart';
+import 'package:fasti_dashboard/core/network/network_info.dart';
+import 'package:fasti_dashboard/features/admin/drivers/data/data_source/drivers_remote_data_source.dart';
+import 'package:fasti_dashboard/features/admin/drivers/domain/repositories/drivers_repository.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/user_model.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:injectable/injectable.dart';
+
+@injectable
+@singleton
+class DriversRepositoryImpl implements DriversRepository {
+  final DriversRemoteDataSource remoteDataSource;
+  final NetworkInfoImpl networkInfoImpl;
+  DriversRepositoryImpl({
+    required this.remoteDataSource,
+    required this.networkInfoImpl,
+  });
+
+  @override
+  Future<Either<Failure, List<UserModel>>> getAllDrivers() async {
+    try {
+      final user = await remoteDataSource.getAllDrivers();
+      return Right(user);
+    } on FirebaseAuthException catch (e) {
+      return Left(Failure.auth(e.message ?? 'Get all drivers failed'));
+    } catch (e) {
+      return Left(Failure.unknown(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, UserModel>> getDriverById(
+      {required String driverId}) async {
+    try {
+      final user = await remoteDataSource.getDriverById(driverId: driverId);
+      if (user == null) {
+        return Left(Failure.auth('Get driver failed'));
+      } else {
+        return Right(user);
+      }
+    } on FirebaseAuthException catch (e) {
+      return Left(Failure.auth(e.message ?? 'Get driver failed'));
+    } catch (e) {
+      return Left(Failure.unknown(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, UserModel>> rechargeDriverWallet({
+    required String driverId,
+    required double amount,
+  }) async {
+    try {
+      final user = await remoteDataSource.rechargeDriverWallet(
+          driverId: driverId, amount: amount);
+      if (user == null) {
+        return Left(Failure.auth('Get driver failed'));
+      } else {
+        return Right(user);
+      }
+    } on FirebaseAuthException catch (e) {
+      return Left(Failure.auth(e.message ?? 'Get driver failed'));
+    } catch (e) {
+      return Left(Failure.unknown(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, UserModel>> approveDriver({
+    required String driverId,
+  }) async {
+    try {
+      final user = await remoteDataSource.approveDriver(driverId: driverId);
+      if (user == null) {
+        return Left(Failure.auth('Get driver failed'));
+      } else {
+        return Right(user);
+      }
+    } on FirebaseAuthException catch (e) {
+      return Left(Failure.auth(e.message ?? 'Get driver failed'));
+    } catch (e) {
+      return Left(Failure.unknown(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, UserModel>> banDriver({
+    required String driverId,
+  }) async {
+    try {
+      final user = await remoteDataSource.banDriver(driverId: driverId);
+      if (user == null) {
+        return Left(Failure.auth('Get driver failed'));
+      } else {
+        return Right(user);
+      }
+    } on FirebaseAuthException catch (e) {
+      return Left(Failure.auth(e.message ?? 'Get driver failed'));
+    } catch (e) {
+      return Left(Failure.unknown(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, UserModel>> payAllWalletTrips({
+    required UserModel driver,
+  }) async {
+    try {
+      final user = await remoteDataSource.payAllWalletTrips(driver: driver);
+      if (user == null) {
+        return Left(Failure.auth('Get driver failed'));
+      } else {
+        return Right(user);
+      }
+    } on FirebaseAuthException catch (e) {
+      return Left(Failure.auth(e.message ?? 'Get driver failed'));
+    } catch (e) {
+      return Left(Failure.unknown(e.toString()));
+    }
+  }
+}

@@ -1,0 +1,47 @@
+import 'package:fasti_dashboard/core/components/custom_buttons.dart';
+import 'package:fasti_dashboard/core/util/palette.dart';
+import 'package:fasti_dashboard/features/admin/trips/presentation/widget/end_trip_dialog.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/trip_model.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class TripActionButtons extends StatefulWidget {
+  final TripModel trip;
+  final WidgetRef ref;
+  const TripActionButtons({super.key, required this.trip, required this.ref});
+
+  @override
+  State<TripActionButtons> createState() => _TripActionButtonsState();
+}
+
+class _TripActionButtonsState extends State<TripActionButtons> {
+  @override
+  Widget build(BuildContext context) {
+    final bool canEndTrip = widget.trip.status.toLowerCase() != 'ended' &&
+        widget.trip.status.toLowerCase() != 'not accepted';
+
+    return Row(
+      children: [
+        if (canEndTrip)
+          CustomButtons.circularButtonWithIconAndTooltip(
+            icon: Icons.flag,
+            tooltip: 'End Trip',
+            color: Palette.redColor,
+            onTap: () => showEndTripDialog(
+                context, widget.ref, widget.trip.id, widget.trip.status),
+          ),
+        if (!canEndTrip)
+          CustomButtons.circularButtonWithIconAndTooltip(
+            icon: widget.trip.status.toLowerCase() == 'ended'
+                ? Icons.check_circle
+                : Icons.cancel,
+            tooltip: widget.trip.status.toLowerCase() == 'ended'
+                ? 'Trip Ended'
+                : 'Trip Not Accepted',
+            color: Colors.grey,
+            onTap: null, // Disabled
+          ),
+      ],
+    );
+  }
+}

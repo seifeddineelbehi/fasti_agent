@@ -1,0 +1,55 @@
+import 'package:fasti_dashboard/features/admin/users/data/model/directions_model.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/user_model.dart';
+import 'package:freezed_annotation/freezed_annotation.dart';
+
+part 'trip_model.freezed.dart';
+part 'trip_model.g.dart';
+
+@freezed
+class TripModel with _$TripModel {
+  const factory TripModel({
+    @Default('') String id,
+    @Default(true) bool isFromAdmin,
+    required DirectionsModel userPickupLocation,
+    required List<DirectionsModel> userDropOffLocations,
+    required String time,
+    required String paymentMethod,
+    required String originAddressName,
+    required List<String> destinationAddressNames,
+    required UserModel driver,
+    required UserModel user,
+    required bool isStopOver,
+    required double fare,
+    required String status,
+    required int distance,
+    required int duration,
+    @Default('') String cancellationReason,
+  }) = _TripModel;
+
+  factory TripModel.fromJson(Map<String, dynamic> json) =>
+      _$TripModelFromJson(json);
+}
+
+extension TripModelFirestore on TripModel {
+  Map<String, dynamic> toJsonForFirestore() {
+    return {
+      'id': id,
+      'isFromAdmin': isFromAdmin,
+      'userPickupLocation': userPickupLocation.toJson(),
+      'userDropOffLocations':
+          userDropOffLocations.map((d) => d.toJson()).toList(),
+      'time': time,
+      'originAddressName': originAddressName,
+      'destinationAddressNames': destinationAddressNames,
+      'driver': driver.toJsonForFirestore(includeTrips: false),
+      'user': user.toJsonForFirestore(includeTrips: false),
+      'isStopOver': isStopOver,
+      'fare': fare,
+      'status': status,
+      'paymentMethod': paymentMethod,
+      'distance': distance,
+      'duration': duration,
+      'cancellationReason': cancellationReason,
+    };
+  }
+}

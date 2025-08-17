@@ -1,0 +1,148 @@
+name: fasti_dashboard
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: any
+  adaptive_theme:
+  collection:
+  cupertino_icons:
+  flutter_web_plugins:
+    sdk: flutter
+  gap:
+  go_router:
+  google_fonts:
+  intersperse:
+  recase:
+  responsive_framework:
+  simple_logger:
+  two_dimensional_scrollables:
+  get_it: ^8.0.3
+  # State Management
+  hooks_riverpod: ^2.3.4
+  equatable: ^2.0.7 # Simplifies object equality comparison, useful for state changes in BLoC.
+  flutter_riverpod: ^2.6.1
+  # Functional programming
+  dartz: ^0.10.1 # Provides functional programming utilities, such as `Either` for better error handling.
+  # Connectivity
+  internet_connection_checker: ^3.0.1 # Checks internet connectivity and handles connection status updates.
+  # Serialization & Code Generation
+  freezed_annotation: ^2.4.4 # Provides annotations required for `freezed` code generation.
+  json_annotation: ^4.9.0 # Provides annotations for `json_serializable` to generate JSON parsing code.
+  shared_preferences: ^2.5.3
+  # Dependency Injection Code Generation
+  injectable: ^2.5.0 # Generates dependency injection boilerplate for use with `get_it`.
+  flutter_map: ^8.1.1
+  latlong2: ^0.9.1
+  location: ^8.0.0
+  permission_handler: ^12.0.0+1
+  # Utilities & UI Enhancements
+  flutter_svg: 2.0.17  # Supports rendering of SVG images within the app.
+  flutter_screenutil: ^5.9.3  # Helps in making the UI responsive across different screen sizes.
+  firebase_auth: ^5.6.0
+  path_provider: ^2.1.5  # Provides commonly used locations on the filesystem (e.g., app documents directory).
+  path: ^1.9.1 # A Dart package for cross-platform file path manipulation.
+  riverpod_annotation: ^2.6.1
+  firebase_core: ^3.14.0
+  cloud_firestore: ^5.6.9
+  image_picker: ^1.1.2
+  image: ^4.5.4
+  shimmer: ^2.0.0
+  firebase_storage: ^12.4.7
+  google_maps_flutter: ^2.12.3
+  geolocator: ^14.0.1
+  flutter_geofire: ^2.0.6
+  flutter_polyline_points: ^2.1.0
+  flutter_dotenv: ^5.2.1
+  http: ^1.4.0
+  geocoder2: ^1.4.0
+  firebase_database: ^11.3.9
+  firebase_messaging: ^15.2.9
+  googleapis: ^14.0.0
+  googleapis_auth: ^2.0.0
+  fluttertoast: ^8.2.12
+  data_table_2: ^2.6.0
+  file_picker: ^10.2.1
+  syncfusion_flutter_charts: ^30.1.42
+  syncfusion_flutter_gauges: ^30.1.42
+  firebase_auth_platform_interface: ^7.7.0
+  js: ^0.7.2
+
+dependency_overrides:
+  http: ^1.4.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  go_router_builder:
+  pedantic_mono:
+  build_runner: ^2.4.15
+  build_verify:
+  flutter_gen_runner: ^5.3.2
+  flutter_launcher_icons: ^0.14.3
+  injectable_generator: any
+  freezed: ^2.5.8
+  json_serializable: ^6.7.1
+  riverpod_generator: ^2.6.3
+
+flutter_gen:
+  integrations:
+    flutter_svg: true
+
+flutter:
+  generate: true
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/svgs/
+#    - assets/.env
+    - .env
+  fonts:
+    - family: Montserrat
+      fonts:
+        - asset: assets/fonts/Montserrat-Regular.ttf
+        - asset: assets/fonts/Montserrat-Italic.ttf
+          style: italic
+        - asset: assets/fonts/Montserrat-BoldItalic.ttf
+          weight: 700
+          style: italic
+        - asset: assets/fonts/Montserrat-ExtraBold.ttf
+          weight: 800
+        - asset: assets/fonts/Montserrat-ExtraBoldItalic.ttf
+          weight: 800
+          style: italic
+        - asset: assets/fonts/Montserrat-ExtraLight.ttf
+          weight: 200
+        - asset: assets/fonts/Montserrat-ExtraLightItalic.ttf
+          weight: 200
+          style: italic
+        - asset: assets/fonts/Montserrat-Light.ttf
+          weight: 300
+        - asset: assets/fonts/Montserrat-LightItalic.ttf
+          weight: 300
+          style: italic
+        - asset: assets/fonts/Montserrat-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Montserrat-MediumItalic.ttf
+          weight: 500
+          style: italic
+        - asset: assets/fonts/Montserrat-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Montserrat-SemiBoldItalic.ttf
+          weight: 600
+          style: italic
+        - asset: assets/fonts/Montserrat-Thin.ttf
+          weight: 100
+        - asset: assets/fonts/Montserrat-ThinItalic.ttf
+          weight: 100
+          style: italic

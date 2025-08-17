@@ -1,0 +1,575 @@
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fasti_dashboard/core/components/common_text.dart';
+import 'package:fasti_dashboard/core/components/custom_buttons.dart';
+import 'package:fasti_dashboard/core/util/palette.dart';
+import 'package:fasti_dashboard/features/admin/trips/presentation/widget/trip_monitoring_dialog.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/trip_model.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+
+class TripStatusMonitorWidget extends StatefulWidget {
+  final TripModel initialTrip;
+
+  const TripStatusMonitorWidget({
+    super.key,
+    required this.initialTrip,
+  });
+
+  @override
+  State<TripStatusMonitorWidget> createState() =>
+      _TripStatusMonitorWidgetState();
+}
+
+class _TripStatusMonitorWidgetState extends State<TripStatusMonitorWidget> {
+  late TripModel currentTrip;
+  StreamSubscription<DocumentSnapshot>? _tripSubscription;
+  bool _isDisposed = false;
+  bool _isMonitoring = false;
+
+  @override
+  void initState() {
+    super.initState();
+    currentTrip = widget.initialTrip;
+
+    // Auto-start monitoring if trip is active
+    if (_isActiveTrip(currentTrip.status)) {
+      _startMonitoring();
+    }
+  }
+
+  bool _isActiveTrip(String status) {
+    final activeStatuses = [
+      "pending",
+      "accepted",
+      "driverarrived",
+      "ontrip",
+      "startstopover",
+      "pausestopover",
+      "resumestopover",
+      "awaiting_customer_confirmation"
+    ];
+    return activeStatuses.contains(status.toLowerCase());
+  }
+
+  bool _isRejectedTrip(String status) {
+    return status.toLowerCase() == "not accepted";
+  }
+
+  void _startMonitoring() {
+    if (_isMonitoring) return;
+
+    setState(() {
+      _isMonitoring = true;
+    });
+
+    _tripSubscription = FirebaseFirestore.instance
+        .collection('trip_requests')
+        .doc(currentTrip.id)
+        .snapshots()
+        .listen(
+      (DocumentSnapshot doc) {
+        if (_isDisposed) return;
+
+        try {
+          final data = doc.data() as Map<String, dynamic>?;
+          if (data != null) {
+            final updatedTrip = TripModel.fromJson(data);
+            if (mounted) {
+              setState(() {
+                currentTrip = updatedTrip;
+              });
+            }
+
+            // Stop monitoring if trip is completed
+            if (!_isActiveTrip(updatedTrip.status)) {
+              _stopMonitoring();
+            }
+          }
+        } catch (e) {
+          print("Error processing trip status update: $e");
+        }
+      },
+      onError: (error) {
+        print("Error listening to trip status: $error");
+        _stopMonitoring();
+      },
+    );
+  }
+
+  void _stopMonitoring() {
+    if (!_isMonitoring) return;
+
+    setState(() {
+      _isMonitoring = false;
+    });
+
+    _tripSubscription?.cancel();
+    _tripSubscription = null;
+  }
+
+  void _showFullMonitoringDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => TripMonitoringDialog(
+        initialTrip: currentTrip,
+        showCloseButton: true,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    _stopMonitoring();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: EdgeInsets.all(16.w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.monitor_heart_outlined,
+                      color: Palette.mainDarkColor,
+                      size: 20.sp,
+                    ),
+                    SizedBox(width: 8.w),
+                    CommonText.textBoldWeight700(
+                      text: "Trip Status Monitor",
+                      fontSize: 18.sp,
+                      color: Colors.black,
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    // Live indicator
+                    if (_isMonitoring) ...[
+                      Container(
+                        width: 8.w,
+                        height: 8.w,
+                        decoration: const BoxDecoration(
+                          color: Colors.green,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      SizedBox(width: 4.w),
+                      CommonText.textBoldWeight500(
+                        text: "LIVE",
+                        fontSize: 10.sp,
+                        color: Colors.green,
+                      ),
+                      SizedBox(width: 12.w),
+                    ],
+
+                    // Control buttons
+                    if (_isActiveTrip(currentTrip.status)) ...[
+                      IconButton(
+                        onPressed:
+                            _isMonitoring ? _stopMonitoring : _startMonitoring,
+                        icon: Icon(
+                          _isMonitoring
+                              ? Icons.pause_circle_outline
+                              : Icons.play_circle_outline,
+                          color: _isMonitoring ? Colors.orange : Colors.green,
+                        ),
+                        tooltip: _isMonitoring
+                            ? "Pause monitoring"
+                            : "Start monitoring",
+                      ),
+                      IconButton(
+                        onPressed: _showFullMonitoringDialog,
+                        icon: Icon(
+                          Icons.fullscreen,
+                          color: Palette.mainDarkColor,
+                        ),
+                        tooltip: "Full screen monitoring",
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+
+            SizedBox(height: 16.h),
+
+            // Progress Bar
+            if (_isActiveTrip(currentTrip.status)) ...[
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      CommonText.textBoldWeight500(
+                        text: "Trip Progress",
+                        fontSize: 12.sp,
+                        color: Colors.grey[600]!,
+                      ),
+                      CommonText.textBoldWeight500(
+                        text:
+                            "${(_getStatusProgress(currentTrip.status) * 100).toInt()}%",
+                        fontSize: 12.sp,
+                        color: _getStatusColor(currentTrip.status),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 8.h),
+                  LinearProgressIndicator(
+                    value: _getStatusProgress(currentTrip.status),
+                    backgroundColor: Colors.grey[300],
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                        _getStatusColor(currentTrip.status)),
+                  ),
+                ],
+              ),
+              SizedBox(height: 16.h),
+            ],
+
+            // Quick Info Row
+            Row(
+              children: [
+                Expanded(
+                  child: _buildQuickInfoItem(
+                    "Driver",
+                    "${currentTrip.driver.firstName} ${currentTrip.driver.lastName}",
+                    Icons.person_outline,
+                  ),
+                ),
+                Expanded(
+                  child: _buildQuickInfoItem(
+                    "Customer",
+                    "${currentTrip.user.firstName} ${currentTrip.user.lastName}",
+                    Icons.account_circle_outlined,
+                  ),
+                ),
+                Expanded(
+                  child: _buildQuickInfoItem(
+                    "Fare",
+                    "${currentTrip.fare.toStringAsFixed(2)} MRU",
+                    Icons.payments_outlined,
+                  ),
+                ),
+              ],
+            ),
+
+            SizedBox(height: 16.h),
+
+            // Action Buttons
+            Row(
+              children: [
+                if (_isActiveTrip(currentTrip.status)) ...[
+                  Expanded(
+                    child: CustomButtons.simpleLongButtonWithIcon(
+                      onPressed: _showFullMonitoringDialog,
+                      text: "Full Monitor",
+                      icon: const Icon(Icons.monitor, size: 16),
+                      height: 42.h,
+                    ),
+                  ),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: CustomButtons.simpleLongButtonWithIcon(
+                      onPressed: () {
+                        // Add refresh functionality
+                        setState(() {
+                          // Force refresh of current trip data
+                        });
+                      },
+                      text: "Refresh",
+                      icon: const Icon(Icons.refresh, size: 16),
+                      height: 42.h,
+                    ),
+                  ),
+                ] else if (_isRejectedTrip(currentTrip.status)) ...[
+                  Expanded(
+                    child: Container(
+                      height: 36.h,
+                      decoration: BoxDecoration(
+                        color: Colors.orange[50],
+                        borderRadius: BorderRadius.circular(6.r),
+                        border: Border.all(color: Colors.orange[300]!),
+                      ),
+                      child: Center(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.info_outline,
+                                size: 16.sp, color: Colors.orange[700]),
+                            SizedBox(width: 6.w),
+                            CommonText.textBoldWeight500(
+                              text: "Driver Declined - Try Another Driver",
+                              fontSize: 12.sp,
+                              color: Colors.orange[700]!,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ] else ...[
+                  Expanded(
+                    child: Container(
+                      height: 36.h,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(6.r),
+                        border: Border.all(color: Colors.grey[300]!),
+                      ),
+                      child: Center(
+                        child: CommonText.textBoldWeight500(
+                          text:
+                              "Trip ${currentTrip.status == 'ended' ? 'Completed' : 'Inactive'}",
+                          fontSize: 14.sp,
+                          color: Colors.grey[600]!,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+
+            // Monitoring Status Info
+            if (_isActiveTrip(currentTrip.status)) ...[
+              SizedBox(height: 12.h),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(8.w),
+                decoration: BoxDecoration(
+                  color: _isMonitoring ? Colors.green[50] : Colors.orange[50],
+                  borderRadius: BorderRadius.circular(4.r),
+                  border: Border.all(
+                    color: _isMonitoring
+                        ? Colors.green[200]!
+                        : Colors.orange[200]!,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _isMonitoring ? Icons.wifi : Icons.wifi_off,
+                      size: 14.sp,
+                      color: _isMonitoring
+                          ? Colors.green[700]
+                          : Colors.orange[700],
+                    ),
+                    SizedBox(width: 6.w),
+                    CommonText.textBoldWeight400(
+                      text: _isMonitoring
+                          ? "Real-time monitoring active"
+                          : "Monitoring paused - Click play to resume",
+                      fontSize: 11.sp,
+                      color: _isMonitoring
+                          ? Colors.green[700]!
+                          : Colors.orange[700]!,
+                    ),
+                  ],
+                ),
+              ),
+            ] else if (_isRejectedTrip(currentTrip.status)) ...[
+              SizedBox(height: 12.h),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(8.w),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(4.r),
+                  border: Border.all(color: Colors.orange[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.warning_outlined,
+                      size: 14.sp,
+                      color: Colors.orange[700],
+                    ),
+                    SizedBox(width: 6.w),
+                    Expanded(
+                      child: CommonText.textBoldWeight400(
+                        text:
+                            "This driver declined the trip. You can select another driver and create a new trip request.",
+                        fontSize: 11.sp,
+                        color: Colors.orange[700]!,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickInfoItem(String label, String value, IconData icon) {
+    return Container(
+      padding: EdgeInsets.all(8.w),
+      margin: EdgeInsets.symmetric(horizontal: 2.w),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(4.r),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 16.sp, color: Palette.mainDarkColor),
+          SizedBox(height: 2.h),
+          CommonText.textBoldWeight400(
+            text: label,
+            fontSize: 9.sp,
+            color: Colors.grey[600]!,
+          ),
+          CommonText.textBoldWeight600(
+            text: value,
+            fontSize: 10.sp,
+            color: Colors.black,
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getStatusDisplayText(String status) {
+    switch (status.toLowerCase()) {
+      case "pending":
+        return "Waiting for Driver";
+      case "accepted":
+        return "Driver Accepted";
+      case "not accepted":
+        return "Trip Declined";
+      case "driverarrived":
+        return "Driver Arrived";
+      case "ontrip":
+        return "Trip in Progress";
+      case "startstopover":
+        return "Stopover Started";
+      case "pausestopover":
+        return "Stopover Paused";
+      case "resumestopover":
+        return "Stopover Resumed";
+      case "awaiting_customer_confirmation":
+        return "Awaiting Payment";
+      case "ended":
+        return "Trip Completed";
+      case "cancelled":
+        return "Trip Cancelled";
+      case "drivercancelled":
+        return "Driver Cancelled";
+      default:
+        return status.toUpperCase();
+    }
+  }
+
+  String _getStatusDescription(String status) {
+    switch (status.toLowerCase()) {
+      case "pending":
+        return "Looking for an available driver...";
+      case "accepted":
+        return "Driver is on the way to pickup location";
+      case "not accepted":
+        return "No driver accepted the trip request";
+      case "driverarrived":
+        return "Driver has arrived at pickup location";
+      case "ontrip":
+        return "Trip is currently in progress";
+      case "startstopover":
+        return "Vehicle stopped for a break";
+      case "pausestopover":
+        return "Stopover break is paused";
+      case "resumestopover":
+        return "Continuing the trip after stopover";
+      case "awaiting_customer_confirmation":
+        return "Waiting for customer to confirm and pay";
+      case "ended":
+        return "Trip has been completed successfully";
+      case "cancelled":
+        return "Trip was cancelled by customer";
+      case "drivercancelled":
+        return "Trip was cancelled by the driver";
+      default:
+        return "Status updated";
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case "pending":
+        return Colors.orange;
+      case "accepted":
+      case "driverarrived":
+        return Colors.blue;
+      case "ontrip":
+      case "startstopover":
+      case "resumestopover":
+        return Colors.green;
+      case "pausestopover":
+        return Colors.amber;
+      case "awaiting_customer_confirmation":
+        return Colors.purple;
+      case "ended":
+        return Colors.green;
+      case "not accepted":
+      case "cancelled":
+      case "drivercancelled":
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  IconData _getStatusIcon(String status) {
+    switch (status.toLowerCase()) {
+      case "ended":
+        return Icons.check;
+      case "not accepted":
+      case "cancelled":
+      case "drivercancelled":
+        return Icons.close;
+      default:
+        return Icons.circle;
+    }
+  }
+
+  double _getStatusProgress(String status) {
+    switch (status.toLowerCase()) {
+      case "pending":
+        return 0.1;
+      case "accepted":
+        return 0.25;
+      case "driverarrived":
+        return 0.4;
+      case "ontrip":
+        return 0.7;
+      case "startstopover":
+      case "pausestopover":
+      case "resumestopover":
+        return 0.8;
+      case "awaiting_customer_confirmation":
+        return 0.9;
+      case "ended":
+        return 1.0;
+      case "not accepted":
+      case "cancelled":
+      case "drivercancelled":
+        return 0.0;
+      default:
+        return 0.5;
+    }
+  }
+}

@@ -1,0 +1,135 @@
+import 'package:dartz/dartz.dart';
+import 'package:fasti_dashboard/core/error/failures.dart';
+import 'package:fasti_dashboard/core/network/network_info.dart';
+import 'package:fasti_dashboard/features/admin/rents/data/data_source/rents_remote_data_source.dart';
+import 'package:fasti_dashboard/features/admin/rents/data/model/rental_request_model.dart';
+import 'package:fasti_dashboard/features/admin/rents/domain/repositories/rents_repository.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/notification_model.dart';
+import 'package:fasti_dashboard/features/admin/users/data/model/user_model.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:injectable/injectable.dart';
+
+@injectable
+@singleton
+class RentsRepositoryImpl implements RentsRepository {
+  final RentsRemoteDataSource remoteDataSource;
+  final NetworkInfoImpl networkInfoImpl;
+  RentsRepositoryImpl({
+    required this.remoteDataSource,
+    required this.networkInfoImpl,
+  });
+
+  @override
+  Future<Either<Failure, List<RentalRequestModel>>> getAllRents() async {
+    try {
+      final user = await remoteDataSource.getAllRents();
+      return Right(user);
+    } on FirebaseAuthException catch (e) {
+      return Left(Failure.auth(e.message ?? 'Get all users failed'));
+    } catch (e, s) {
+      return Left(Failure.unknown(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, RentalRequestModel>> getRentById(
+      {required String rentId}) async {
+    try {
+      final user = await remoteDataSource.getRentById(rentId: rentId);
+      if (user == null) {
+        return Left(Failure.auth('Get driver failed'));
+      } else {
+        return Right(user);
+      }
+    } on FirebaseAuthException catch (e) {
+      return Left(Failure.auth(e.message ?? 'Get driver failed'));
+    } catch (e) {
+      return Left(Failure.unknown(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, RentalRequestModel>> confirmUnConfirmRent(
+      {required RentalRequestModel rent}) async {
+    try {
+      final user = await remoteDataSource.confirmUnConfirmRent(rent: rent);
+      if (user == null) {
+        return Left(Failure.auth('Get driver failed'));
+      } else {
+        return Right(user);
+      }
+    } on FirebaseAuthException catch (e) {
+      return Left(Failure.auth(e.message ?? 'Get driver failed'));
+    } catch (e) {
+      return Left(Failure.unknown(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, UserModel>> updateUserConfirmedRental(
+      {required RentalRequestModel rent}) async {
+    try {
+      final user = await remoteDataSource.updateUserConfirmedRental(rent: rent);
+      if (user == null) {
+        return Left(Failure.auth('Get driver failed'));
+      } else {
+        return Right(user);
+      }
+    } on FirebaseAuthException catch (e) {
+      return Left(Failure.auth(e.message ?? 'Get driver failed'));
+    } catch (e) {
+      return Left(Failure.unknown(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, UserModel>> updateUserNotif(
+      {required NotificationModel notif, required String userId}) async {
+    try {
+      final user =
+          await remoteDataSource.updateUserNotif(notif: notif, userId: userId);
+      if (user == null) {
+        return Left(Failure.auth('Get driver failed'));
+      } else {
+        return Right(user);
+      }
+    } on FirebaseAuthException catch (e) {
+      return Left(Failure.auth(e.message ?? 'Get driver failed'));
+    } catch (e) {
+      return Left(Failure.unknown(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, String>> getAccessToken() async {
+    try {
+      final token = await remoteDataSource.getAccessToken();
+      return Right(token);
+    } on FirebaseException catch (e) {
+      return Left(Failure.user(e.message ?? 'Failed to get token'));
+    } catch (e) {
+      return Left(Failure.unknown(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, bool>> sendTripCallNotification({
+    required deviceRegistrationToken,
+    required String serverAccessTokenKey,
+    required String carModel,
+    required String status,
+  }) async {
+    try {
+      final token = await remoteDataSource.sendTripCallNotification(
+          deviceRegistrationToken: deviceRegistrationToken,
+          serverAccessTokenKey: serverAccessTokenKey,
+          status: status,
+          carModel: carModel);
+      return Right(token);
+    } on FirebaseException catch (e) {
+      return Left(Failure.user(e.message ?? 'Failed to get token'));
+    } catch (e) {
+      return Left(Failure.unknown(e.toString()));
+    }
+  }
+}

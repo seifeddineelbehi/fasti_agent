@@ -1,0 +1,104 @@
+import 'package:fasti_dashboard/core/util/palette.dart';
+import 'package:fasti_dashboard/features/admin/drivers/presentation/riverpod/drivers_provider.dart';
+import 'package:fasti_dashboard/features/admin/drivers/presentation/widget/drivers_table_widget.dart';
+import 'package:fasti_dashboard/widgets/content_view.dart';
+import 'package:fasti_dashboard/widgets/page_header.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gap/gap.dart';
+
+class DriversPage extends ConsumerStatefulWidget {
+  const DriversPage({super.key});
+
+  @override
+  ConsumerState<DriversPage> createState() => _DriversPageState();
+}
+
+class _DriversPageState extends ConsumerState<DriversPage> {
+  bool isLoading = false;
+  TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((timeStamp) async {
+      setState(() {
+        isLoading = true;
+      });
+
+      await ref.read(driversNotifierProvider.notifier).getAllDrivers();
+      setState(() {
+        isLoading = false;
+      });
+    });
+
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.trim().toLowerCase();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final drivers = ref.watch(driversNotifierProvider).drivers ?? [];
+    // Filter by search query
+    final filteredDrivers = drivers.where((driver) {
+      final fullName =
+          '${driver.firstName ?? ''} ${driver.lastName ?? ''}'.toLowerCase();
+      return fullName.contains(_searchQuery);
+    }).toList();
+    return isLoading
+        ? Center(
+            child: CircularProgressIndicator(
+              color: Palette.mainDarkColor,
+            ),
+          )
+        : Scaffold(
+            backgroundColor: Colors.grey[50],
+            body: ContentView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const PageHeader(
+                    title: 'Drivers',
+                    description: 'List of Drivers.',
+                  ),
+                  const Gap(16),
+                  TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Search drivers...',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value.toLowerCase();
+                      });
+                    },
+                  ),
+                  const Gap(16),
+                  Expanded(
+                    child: Card(
+                      clipBehavior: Clip.antiAlias,
+                      child: DriversTableWidget(
+                        drivers: filteredDrivers,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+  }
+}

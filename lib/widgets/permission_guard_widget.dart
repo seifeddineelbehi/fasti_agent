@@ -1,0 +1,91 @@
+import 'package:fasti_dashboard/features/auth/presentation/riverpod/auth_provider.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+/// A widget that conditionally shows its child based on user permissions
+class PermissionGuard extends ConsumerWidget {
+  const PermissionGuard({
+    super.key,
+    required this.permissions,
+    required this.child,
+    this.fallback,
+    this.requireAll = false,
+  });
+
+  /// List of permissions required to show the child
+  final List<String> permissions;
+
+  /// The widget to show if user has required permissions
+  final Widget child;
+
+  /// Widget to show if user doesn't have permissions (defaults to empty container)
+  final Widget? fallback;
+
+  /// If true, user must have ALL permissions. If false, user needs at least ONE permission
+  final bool requireAll;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(authNotifierProvider);
+
+    // If no permissions required, show to all authenticated users
+    if (permissions.isEmpty) {
+      return child;
+    }
+
+    final userPermissions = authState.currentUserPermissions;
+
+    bool hasPermission;
+    if (requireAll) {
+      // User must have ALL required permissions
+      hasPermission = permissions
+          .every((permission) => userPermissions.contains(permission));
+    } else {
+      // User must have AT LEAST ONE required permission
+      hasPermission =
+          permissions.any((permission) => userPermissions.contains(permission));
+    }
+
+    return hasPermission ? child : (fallback ?? const SizedBox.shrink());
+  }
+}
+
+/// Extension on Widget to add permission checking
+extension PermissionWidgetExtension on Widget {
+  /// Wraps the widget with a PermissionGuard
+  Widget requirePermission(
+    List<String> permissions, {
+    Widget? fallback,
+    bool requireAll = false,
+  }) {
+    return PermissionGuard(
+      permissions: permissions,
+      requireAll: requireAll,
+      fallback: fallback,
+      child: this,
+    );
+  }
+}
+
+/// Mixin for pages that need permission checking
+mixin PagePermissionMixin {
+  /// Override this in pages to define required permissions
+  List<String> get requiredPermissions => [];
+
+  /// Override this to define if all permissions are required (default: false - needs at least one)
+  bool get requireAllPermissions => false;
+
+  /// Check if current user has access to this page
+  bool hasPageAccess(List<String> userPermissions, {bool isAdmin = false}) {
+    if (isAdmin) return true;
+    if (requiredPermissions.isEmpty) return true;
+
+    if (requireAllPermissions) {
+      return requiredPermissions
+          .every((permission) => userPermissions.contains(permission));
+    } else {
+      return requiredPermissions
+          .any((permission) => userPermissions.contains(permission));
+    }
+  }
+}

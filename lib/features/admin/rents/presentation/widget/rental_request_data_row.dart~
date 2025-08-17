@@ -1,0 +1,157 @@
+import 'package:fasti_dashboard/core/components/common_text.dart';
+import 'package:fasti_dashboard/core/router/router.dart';
+import 'package:fasti_dashboard/features/admin/rents/data/model/rental_request_model.dart';
+import 'package:fasti_dashboard/features/admin/rents/presentation/widget/rental_request_action_buttons.dart';
+import 'package:fasti_dashboard/features/admin/rents/presentation/widget/rental_request_status_badge.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+
+DataRow buildRentalRequestDataRow(
+  BuildContext context,
+  RentalRequestModel request,
+  WidgetRef ref,
+) {
+  return DataRow(
+    onSelectChanged: (_) => RentPageRoute(rentId: request.id).go(context),
+    cells: [
+      DataCell(
+        Container(
+          width: 60,
+          height: 40,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            image: request.car.imageUrl.isNotEmpty
+                ? DecorationImage(
+                    image: NetworkImage(request.car.imageUrl.first),
+                    fit: BoxFit.cover,
+                  )
+                : null,
+            color: request.car.imageUrl.isEmpty ? Colors.grey[200] : null,
+          ),
+          child: request.car.imageUrl.isEmpty
+              ? Icon(Icons.directions_car, color: Colors.grey[600])
+              : null,
+        ),
+      ),
+      DataCell(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CommonText.textBoldWeight600(
+              text: "${request.car.brand} ${request.car.model}",
+              fontSize: 14,
+            ),
+            CommonText.textBoldWeight400(
+              text: request.car.type,
+              fontSize: 12,
+              color: Colors.grey[600],
+            ),
+          ],
+        ),
+      ),
+      DataCell(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CommonText.textBoldWeight600(
+              text: "${request.user.firstName} ${request.user.lastName}",
+              fontSize: 14,
+            ),
+            CommonText.textBoldWeight400(
+              text: request.user.phone,
+              fontSize: 12,
+              color: Colors.grey[600],
+            ),
+          ],
+        ),
+      ),
+      DataCell(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CommonText.textBoldWeight500(
+              text: _formatDate(request.reservationDateStart),
+              fontSize: 12,
+            ),
+            CommonText.textBoldWeight400(
+              text: "to",
+              fontSize: 10,
+              color: Colors.grey[600],
+            ),
+            CommonText.textBoldWeight500(
+              text: _formatDate(request.reservationDateEnd),
+              fontSize: 12,
+            ),
+          ],
+        ),
+      ),
+      DataCell(
+        CommonText.textBoldWeight600(
+          text:
+              "${request.numberOfDays} day${request.numberOfDays > 1 ? 's' : ''}",
+        ),
+      ),
+      DataCell(
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              request.withDriver ? Icons.person : Icons.person_off,
+              size: 16,
+              color: request.withDriver ? Colors.green : Colors.grey,
+            ),
+            const SizedBox(width: 4),
+            CommonText.textBoldWeight500(
+              text: request.withDriver ? "Yes" : "No",
+              fontSize: 12,
+            ),
+          ],
+        ),
+      ),
+      DataCell(
+        CommonText.textBoldWeight600(
+          text: "${request.totalCost.toStringAsFixed(2)} MRU",
+          color: Colors.green[700],
+        ),
+      ),
+      DataCell(
+        buildRentalRequestStatusBadge(request.status),
+      ),
+      DataCell(
+        CommonText.textBoldWeight400(
+          text: _formatDateTime(request.submittedAt),
+          fontSize: 12,
+        ),
+      ),
+      DataCell(
+        RentalRequestActionButtons(
+          requestId: request.id,
+          currentStatus: request.status,
+          ref: ref,
+        ),
+      ),
+    ],
+  );
+}
+
+String _formatDate(String dateString) {
+  try {
+    final date = DateTime.parse(dateString);
+    return DateFormat('MMM dd, yyyy').format(date);
+  } catch (e) {
+    return dateString;
+  }
+}
+
+String _formatDateTime(String dateString) {
+  try {
+    final date = DateTime.parse(dateString);
+    return DateFormat('MMM dd, HH:mm').format(date);
+  } catch (e) {
+    return dateString;
+  }
+}
