@@ -14,8 +14,8 @@ void main() async {
   configureDependencies();
   final sharedPrefs = await SharedPreferences.getInstance();
 
-  await dotenv.load(fileName: ".env");
-  // await dotenv.load(fileName: "assets/.env");
+  // await dotenv.load(fileName: ".env");
+  await dotenv.load(fileName: "assets/.env");
   await Firebase.initializeApp(
     options: FirebaseOptions(
       apiKey: dotenv.env['FIREBASE_API_KEY']!,

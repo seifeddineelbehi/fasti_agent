@@ -105,8 +105,8 @@ flutter:
   assets:
     - assets/images/
     - assets/svgs/
-#    - assets/.env
-    - .env
+    - assets/.env
+#    - .env
   fonts:
     - family: Montserrat
       fonts:
