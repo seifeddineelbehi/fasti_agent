@@ -1,3 +1,4 @@
+import 'package:fasti_dashboard/features/admin/agents/data/model/agent_model.dart'; // Import for permissions
 import 'package:fasti_dashboard/features/admin/agents/presentation/screen/agent_page.dart';
 import 'package:fasti_dashboard/features/admin/agents/presentation/screen/agents_page.dart';
 import 'package:fasti_dashboard/features/admin/agents/presentation/screen/create_agent_page.dart';
@@ -59,8 +60,13 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) async {
       final bool isLoggedIn =
           await AuthCachedDataSource.isAgentLoggedInStatic();
-      await ref.read(authNotifierProvider.notifier).getAgentCached();
-      await ref.read(driversNotifierProvider.notifier).fetchAdminData();
+
+      // Load agent data if logged in
+      if (isLoggedIn) {
+        await ref.read(authNotifierProvider.notifier).getAgentCached();
+        await ref.read(driversNotifierProvider.notifier).fetchAdminData();
+      }
+
       final String location = state.matchedLocation;
 
       // Public routes that don't require authentication
@@ -74,9 +80,48 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/login';
       }
 
-      // If user is logged in and trying to access login page, redirect to dashboard
+      // If user is logged in and trying to access login page, redirect based on permissions
       if (isLoggedIn && location == '/login') {
-        return '/dashboard';
+        final authState = ref.read(authNotifierProvider);
+        final userPermissions = authState.currentUserPermissions;
+
+        // Determine redirect route based on agent permissions
+        final redirectRoute = _getFirstAccessibleRoute(userPermissions);
+
+        // If agent has no permissions, sign them out
+        if (redirectRoute == '/login') {
+          await ref.read(authNotifierProvider.notifier).signOut();
+          return '/login';
+        }
+
+        return redirectRoute;
+      }
+
+      // Permission-based route checking for logged-in agents
+      if (isLoggedIn) {
+        final authState = ref.read(authNotifierProvider);
+        final userPermissions = authState.currentUserPermissions;
+
+        // Check if agent has permission to access specific routes
+        final routePermissions = _getRoutePermissions(location);
+        if (routePermissions.isNotEmpty) {
+          final hasPermission = routePermissions
+              .any((permission) => userPermissions.contains(permission));
+
+          if (!hasPermission) {
+            // Redirect to first accessible page if no permission
+            final firstAccessibleRoute =
+                _getFirstAccessibleRoute(userPermissions);
+
+            // If agent has no permissions, sign them out
+            if (firstAccessibleRoute == '/login') {
+              await ref.read(authNotifierProvider.notifier).signOut();
+              return '/login';
+            }
+
+            return firstAccessibleRoute;
+          }
+        }
       }
 
       // No redirect needed
@@ -84,15 +129,92 @@ final routerProvider = Provider<GoRouter>((ref) {
     },
     // Handle redirect errors
     onException: (context, state, router) {
-      // Log the error or handle it appropriately
       if (kDebugMode) {
         print('Router exception: ${state.error}');
       }
-      // Fallback to login page on error
       router.go('/login');
     },
   );
 });
+
+// Helper function to get first accessible route based on permissions
+String _getFirstAccessibleRoute(List<String> agentPermissions) {
+  // Priority order: Dashboard -> Cars -> Users -> Drivers -> Trips -> Rentals -> Agents
+  final priorityRoutes = [
+    {
+      'route': '/dashboard',
+      'permissions': [AgentPermissions.viewDashboard]
+    },
+    {
+      'route': '/cars',
+      'permissions': [AgentPermissions.viewCars]
+    },
+    {
+      'route': '/users',
+      'permissions': [AgentPermissions.viewUsers]
+    },
+    {
+      'route': '/drivers',
+      'permissions': [AgentPermissions.viewDrivers]
+    },
+    {
+      'route': '/trips',
+      'permissions': [AgentPermissions.viewTrips]
+    },
+    {
+      'route': '/rents_requests',
+      'permissions': [AgentPermissions.viewRentals]
+    },
+    {
+      'route': '/agents',
+      'permissions': [AgentPermissions.viewAgents]
+    },
+  ];
+
+  // Find the first route the agent has permission to access
+  for (final routeData in priorityRoutes) {
+    final routePermissions = routeData['permissions'] as List<String>;
+    final hasPermission = routePermissions
+        .any((permission) => agentPermissions.contains(permission));
+
+    if (hasPermission) {
+      return routeData['route'] as String;
+    }
+  }
+
+  // If no permissions found, return login (will trigger signout)
+  return '/login';
+}
+
+// Helper function to get required permissions for routes
+List<String> _getRoutePermissions(String route) {
+  final routePermissions = <String, List<String>>{
+    '/dashboard': [AgentPermissions.viewDashboard],
+    '/users': [AgentPermissions.viewUsers],
+    '/drivers': [AgentPermissions.viewDrivers],
+    '/trips': [AgentPermissions.viewTrips],
+    '/cars': [AgentPermissions.viewCars],
+    '/rents_requests': [AgentPermissions.viewRentals],
+    '/agents': [AgentPermissions.viewAgents],
+    '/addDriver': [
+      AgentPermissions.viewDrivers,
+      AgentPermissions.approveDrivers
+    ],
+    '/admin/cars/create': [AgentPermissions.addCars],
+    '/admin/agents/create': [AgentPermissions.createAgents],
+    '/admin/trips/add': [AgentPermissions.viewTrips],
+    '/saved-places': [AgentPermissions.viewTrips],
+    '/saved-places/add': [AgentPermissions.viewTrips],
+  };
+
+  for (final entry in routePermissions.entries) {
+    if (route.startsWith(entry.key)) {
+      return entry.value;
+    }
+  }
+
+  return [];
+}
 
 @TypedStatefulShellRoute<ShellRouteData>(
   branches: [
