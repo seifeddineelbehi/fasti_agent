@@ -7,6 +7,7 @@ import 'package:fasti_dashboard/features/admin/drivers/presentation/riverpod/dri
 import 'package:fasti_dashboard/features/admin/trips/data/model/route_item_model.dart';
 import 'package:fasti_dashboard/features/admin/trips/presentation/riverpod/saved_places/saved_places_provider.dart';
 import 'package:fasti_dashboard/features/admin/trips/presentation/riverpod/trips/trips_provider.dart';
+import 'package:fasti_dashboard/features/admin/trips/presentation/riverpod/web_geocoding_service.dart';
 import 'package:fasti_dashboard/features/admin/trips/presentation/widget/add_trip_route_fields_widget.dart';
 import 'package:fasti_dashboard/features/admin/trips/presentation/widget/add_trip_saved_places_widget.dart';
 import 'package:fasti_dashboard/features/admin/trips/presentation/widget/driver_selection_widget.dart';
@@ -16,8 +17,10 @@ import 'package:fasti_dashboard/features/admin/users/data/model/directions_model
 import 'package:fasti_dashboard/features/admin/users/data/model/user_model.dart';
 import 'package:fasti_dashboard/gen/assets.gen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -70,6 +73,8 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
   @override
   void initState() {
     super.initState();
+    // _initializeWebGeocodingService();
+
     WidgetsBinding.instance.addPostFrameCallback((timeStamp) async {
       ref.read(tripsNotifierProvider.notifier).initDropOffLocation();
       setState(() {
@@ -83,6 +88,63 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
     });
     _initializeRouteItems();
     _checkLocationPermission();
+  }
+
+  Future<void> _initializeWebGeocodingService() async {
+    try {
+      final mapKey = dotenv.env['GOOGLE_MAPS_API_KEY'];
+      if (mapKey == null) {
+        throw Exception('Google Maps API key not found');
+      }
+
+      await WebGeocodingService.initialize(apiKey: mapKey);
+
+      // Set up callback to receive POI names
+      WebGeocodingService.setPOICallback((String? poiName) {
+        print("Flutter received POI callback: $poiName");
+
+        if (poiName != null) {
+          setState(() {
+            currentLocationName = poiName;
+          });
+
+          // Auto-copy to clipboard
+
+          // Show success message
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("$poiName (copied to clipboard)"),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+
+          print("POI detected: $poiName");
+        } else {
+          setState(() {
+            currentLocationName = "No POI found here";
+          });
+
+          // Show info message
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("No POI found at this location"),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 1),
+            ),
+          );
+        }
+      });
+
+      print("Web geocoding service initialized successfully");
+
+      // Initialize the JavaScript map after a delay
+      Timer(const Duration(seconds: 2), () {
+        WebGeocodingService.initializeJSMap(36.8065, 10.1815, 15);
+      });
+    } catch (e) {
+      print("Failed to initialize web geocoding service: $e");
+    }
   }
 
   void _initializeRouteItems() {
@@ -234,6 +296,8 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
     try {
       print(latitude);
       print(longitude);
+
+      // Use the enhanced provider method that includes establishment detection
       final address =
           await ref.read(tripsNotifierProvider.notifier).fetchAddressFromLatLng(
                 latitude: latitude,
@@ -243,6 +307,18 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
 
       setState(() {
         currentLocationName = address;
+        userCurrentPosition = Position(
+          longitude: longitude,
+          latitude: latitude,
+          timestamp: DateTime.now(),
+          accuracy: 0.0,
+          altitude: 0.0,
+          heading: 0.0,
+          speed: 0.0,
+          speedAccuracy: 0.0,
+          altitudeAccuracy: 0.0,
+          headingAccuracy: 0.0,
+        );
       });
     } catch (e) {
       print("Error fetching address: $e");
@@ -680,6 +756,24 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
     super.dispose();
   }
 
+  String locationInfo = "";
+
+  void _handleTap(LatLng tappedPoint) async {
+    List<Placemark> placemarks = await placemarkFromCoordinates(
+      tappedPoint.latitude,
+      tappedPoint.longitude,
+    );
+
+    if (placemarks.isNotEmpty) {
+      Placemark place = placemarks.first;
+
+      setState(() {
+        locationInfo =
+            "${place.name ?? ''}, ${place.locality ?? ''}, ${place.subAdministrativeArea ?? ''}";
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final tripsState = ref.watch(tripsNotifierProvider);
@@ -967,12 +1061,40 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
                         _initializeLocation();
                       }
                     },
+                    // onTap: (pos) async {
+                    //   print(
+                    //       "Flutter map tapped at: ${pos.latitude}, ${pos.longitude}");
+                    //   _handleTap(pos);
+                    //   // Simulate click on the JavaScript map to detect POIs
+                    //   // WebGeocodingService.simulateMapClick(
+                    //   //     pos.latitude, pos.longitude);
+                    //
+                    //   // // Use the POI detection
+                    //   // WebGeocodingService.handleMapClick(
+                    //   //     pos.latitude, pos.longitude);
+                    //
+                    //   // Also update the current location for map selection mode
+                    //   // if (isMapSelectionMode) {
+                    //   //   setState(() {
+                    //   //     pickLocation = pos;
+                    //   //   });
+                    //   //   await _fetchAddressFromLatLng(
+                    //   //     latitude: pos.latitude,
+                    //   //     longitude: pos.longitude,
+                    //   //   );
+                    //   // }
+                    // },
                     onCameraMove: (CameraPosition cameraPosition) {
                       if (pickLocation != cameraPosition.target) {
                         setState(() {
                           pickLocation = cameraPosition.target;
                         });
                       }
+                      // WebGeocodingService.syncMapPosition(
+                      //   cameraPosition.target.latitude,
+                      //   cameraPosition.target.longitude,
+                      //   cameraPosition.zoom,
+                      // );
                     },
                     onCameraIdle: () async {
                       if (pickLocation != null && !isFirstLoading) {

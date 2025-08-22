@@ -58,7 +58,9 @@ dependencies:
   image: ^4.5.4
   shimmer: ^2.0.0
   firebase_storage: ^12.4.7
-  google_maps_flutter: ^2.12.3
+  google_maps_flutter: ^2.10.0
+  geocoding: ^4.0.0
+  webview_flutter: ^4.4.2
   geolocator: ^14.0.1
   flutter_geofire: ^2.0.6
   flutter_polyline_points: ^2.1.0

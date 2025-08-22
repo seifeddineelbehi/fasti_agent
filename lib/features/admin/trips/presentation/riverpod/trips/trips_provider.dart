@@ -391,6 +391,431 @@ class TripsNotifier extends StateNotifier<TripsState> {
     }
   }
 
+  Future<String> fetchAddressFromLatLngWithEstablishments({
+    required double latitude,
+    required double longitude,
+    required BuildContext context,
+  }) async {
+    try {
+      state = state.copyWith(isFetchingAddress: true);
+
+      final mapKey = dotenv.env['GOOGLE_MAPS_API_KEY'];
+      if (mapKey == null) {
+        throw Exception('Google Maps API key not found');
+      }
+
+      // Try to find establishments using area-based search
+      String? establishmentName =
+          await _getEstablishmentAtCoordinates(latitude, longitude, mapKey);
+
+      // If we found an establishment, return it
+      if (establishmentName != null && establishmentName.isNotEmpty) {
+        state = state.copyWith(isFetchingAddress: false);
+        return establishmentName;
+      }
+
+      // Fallback to regular geocoding if no establishment found
+      final data = await Geocoder2.getDataFromCoordinates(
+        latitude: latitude,
+        longitude: longitude,
+        googleMapApiKey: mapKey,
+      );
+
+      final address = data.address;
+      final parts = address.split(',').map((e) => e.trim()).toList();
+      final city = data.city?.trim().toLowerCase();
+      final country = data.country?.trim().toLowerCase();
+      final plusCodeRegex = RegExp(r'^[A-Z0-9]{4,}\+[A-Z0-9]{2,}$');
+      String? streetName;
+
+      for (final part in parts) {
+        final partLower = part.toLowerCase();
+        if (part.isNotEmpty &&
+            !plusCodeRegex.hasMatch(part) &&
+            partLower != city &&
+            partLower != country) {
+          streetName = part;
+          break;
+        }
+      }
+
+      final cleanedAddress = (streetName == null ||
+              streetName.toLowerCase().contains(city ?? '') ||
+              streetName.toLowerCase().contains(country ?? ''))
+          ? "Unnamed Street, $city"
+          : "$streetName, $city";
+
+      state = state.copyWith(isFetchingAddress: false);
+      return cleanedAddress;
+    } catch (e) {
+      log("Error fetching address: $e");
+      state = state.copyWith(isFetchingAddress: false);
+      return 'Unknown Location';
+    }
+  }
+
+// New approach: Search for common establishment types near the coordinates
+  Future<String?> _getEstablishmentAtCoordinates(
+      double latitude, double longitude, String mapKey) async {
+    try {
+      if (kIsWeb) {
+        return await _getEstablishmentWebSearch(latitude, longitude);
+      } else {
+        return await _getEstablishmentHttpNearby(latitude, longitude, mapKey);
+      }
+    } catch (e) {
+      print("Error in establishment detection: $e");
+      return null;
+    }
+  }
+
+// Web implementation: Use multiple search terms to find establishments
+  Future<String?> _getEstablishmentWebSearch(
+      double latitude, double longitude) async {
+    try {
+      final google = js.context['google'];
+
+      if (google == null ||
+          google['maps'] == null ||
+          google['maps']['places'] == null) {
+        print("Places library not loaded");
+        return null;
+      }
+
+      // Import library
+      final importLibrary = js.context['google']['maps']['importLibrary'];
+      if (importLibrary != null) {
+        final importCompleter = Completer<void>();
+        final promise =
+            importLibrary.callMethod('call', [js.context, 'places']);
+
+        promise.callMethod('then', [
+          js.allowInterop((result) {
+            importCompleter.complete();
+          })
+        ]);
+
+        promise.callMethod('catch', [
+          js.allowInterop((error) {
+            print("Error importing places library: $error");
+            importCompleter.completeError(error);
+          })
+        ]);
+
+        await importCompleter.future;
+      }
+
+      final placesLibrary = js.context['google']['maps']['places'];
+      if (placesLibrary == null) {
+        print("Places library not available after import");
+        return null;
+      }
+
+      final AutocompleteSuggestion = placesLibrary['AutocompleteSuggestion'];
+      if (AutocompleteSuggestion != null &&
+          AutocompleteSuggestion['fetchAutocompleteSuggestions'] != null) {
+        // Try multiple search terms that might match establishments in the area
+        final searchTerms = [
+          'restaurant',
+          'store',
+          'shop',
+          'cafe',
+          'business',
+          'gym',
+          'showroom',
+          'center',
+          'office',
+          'building'
+        ];
+
+        for (final searchTerm in searchTerms) {
+          final completer = Completer<String?>();
+
+          final request = js.JsObject.jsify({
+            'input': searchTerm,
+            'locationBias': js.JsObject.jsify({
+              'center': js.JsObject.jsify({
+                'lat': latitude,
+                'lng': longitude,
+              }),
+              'radius': 100, // Small radius to find nearby establishments
+            }),
+            'includedPrimaryTypes': ['establishment'],
+          });
+
+          final promise = AutocompleteSuggestion.callMethod(
+              'fetchAutocompleteSuggestions', [request]);
+
+          promise.callMethod('then', [
+            js.allowInterop((result) {
+              try {
+                final suggestions =
+                    result['suggestions'] as List<dynamic>? ?? [];
+
+                if (suggestions.isNotEmpty) {
+                  // Find the closest establishment to our coordinates
+                  _findClosestEstablishment(
+                      suggestions, latitude, longitude, completer, google);
+                } else {
+                  completer.complete(null);
+                }
+              } catch (e) {
+                print("Error processing suggestions for $searchTerm: $e");
+                completer.complete(null);
+              }
+            })
+          ]);
+
+          promise.callMethod('catch', [
+            js.allowInterop((error) {
+              print("Error searching for $searchTerm: $error");
+              completer.complete(null);
+            })
+          ]);
+
+          final result = await completer.future.timeout(
+            Duration(seconds: 3),
+            onTimeout: () => null,
+          );
+
+          if (result != null) {
+            print(
+                "Found establishment with search term '$searchTerm': $result");
+            return result;
+          }
+        }
+      }
+
+      return null;
+    } catch (e) {
+      print("Error in web establishment search: $e");
+      return null;
+    }
+  }
+
+// Helper method to find the closest establishment to the clicked coordinates
+  Future<void> _findClosestEstablishment(
+      List<dynamic> suggestions,
+      double targetLat,
+      double targetLng,
+      Completer<String?> completer,
+      js.JsObject google) async {
+    try {
+      String? closestEstablishment;
+      double closestDistance = double.infinity;
+
+      final List<Future<void>> futures = [];
+
+      for (var suggestion in suggestions.take(5)) {
+        // Check first 5 suggestions
+        final future =
+            _checkSuggestionDistance(suggestion, targetLat, targetLng, google)
+                .then((result) {
+          if (result != null) {
+            final distance = result['distance'] as double;
+            final name = result['name'] as String;
+
+            if (distance < closestDistance && distance < 200) {
+              // Within 200 meters
+              closestDistance = distance;
+              closestEstablishment = name;
+            }
+          }
+        }).catchError((e) {
+          print("Error checking suggestion: $e");
+        });
+
+        futures.add(future);
+      }
+
+      await Future.wait(futures);
+
+      completer.complete(closestEstablishment);
+    } catch (e) {
+      print("Error finding closest establishment: $e");
+      completer.complete(null);
+    }
+  }
+
+// Check if a suggestion is close to our target coordinates
+  Future<Map<String, dynamic>?> _checkSuggestionDistance(dynamic suggestion,
+      double targetLat, double targetLng, js.JsObject google) async {
+    try {
+      final placePrediction = suggestion['placePrediction'];
+      if (placePrediction == null) return null;
+
+      final placeId = placePrediction['placeId'];
+      if (placeId == null) return null;
+
+      final completer = Completer<Map<String, dynamic>?>();
+
+      // Use the same Place.fetchFields pattern as your working code
+      final Place = google['maps']['places']['Place'];
+      final place = js.JsObject(Place, [
+        js.JsObject.jsify({'id': placeId})
+      ]);
+
+      final fieldsToFetch = [
+        'id',
+        'displayName',
+        'formattedAddress',
+        'location'
+      ];
+      final fetchDetailsPromise = place.callMethod('fetchFields', [
+        js.JsObject.jsify({'fields': fieldsToFetch})
+      ]);
+
+      fetchDetailsPromise.callMethod('then', [
+        js.allowInterop((placeResult) {
+          try {
+            if (placeResult != null && placeResult['place'] != null) {
+              final placeData = placeResult['place'];
+              final location = placeData['location'];
+
+              if (location != null) {
+                double? lat, lng;
+
+                // Use the same coordinate extraction logic as your searchAddressAutoComplete
+                try {
+                  if (location['lat'] != null) {
+                    lat = double.tryParse(location['lat'].toString());
+                  }
+                  if (location['lng'] != null) {
+                    lng = double.tryParse(location['lng'].toString());
+                  }
+
+                  if (lat == null) {
+                    try {
+                      final latResult = location.callMethod('lat');
+                      if (latResult != null) {
+                        lat = double.tryParse(latResult.toString());
+                      }
+                    } catch (e) {}
+                  }
+
+                  if (lng == null) {
+                    try {
+                      final lngResult = location.callMethod('lng');
+                      if (lngResult != null) {
+                        lng = double.tryParse(lngResult.toString());
+                      }
+                    } catch (e) {}
+                  }
+                } catch (e) {
+                  print("Error extracting coordinates: $e");
+                }
+
+                if (lat != null && lng != null) {
+                  final distance =
+                      calculateDistance(targetLat, targetLng, lat, lng);
+
+                  // Extract name
+                  String displayName = '';
+                  try {
+                    final displayNameObj = placeData['displayName'];
+                    if (displayNameObj != null) {
+                      if (displayNameObj is String) {
+                        displayName = displayNameObj;
+                      } else if (displayNameObj['text'] != null) {
+                        displayName = displayNameObj['text'].toString();
+                      } else {
+                        displayName = displayNameObj.toString();
+                      }
+                    }
+                  } catch (e) {
+                    print("Error extracting displayName: $e");
+                  }
+
+                  if (displayName.isNotEmpty) {
+                    completer.complete({
+                      'distance': distance,
+                      'name': displayName,
+                    });
+                  } else {
+                    completer.complete(null);
+                  }
+                } else {
+                  completer.complete(null);
+                }
+              } else {
+                completer.complete(null);
+              }
+            } else {
+              completer.complete(null);
+            }
+          } catch (e) {
+            print("Error processing place result: $e");
+            completer.complete(null);
+          }
+        })
+      ]);
+
+      fetchDetailsPromise.callMethod('catch', [
+        js.allowInterop((error) {
+          print("Error fetching place details: $error");
+          completer.complete(null);
+        })
+      ]);
+
+      return await completer.future.timeout(
+        Duration(seconds: 2),
+        onTimeout: () => null,
+      );
+    } catch (e) {
+      print("Error in distance check: $e");
+      return null;
+    }
+  }
+
+// Mobile HTTP implementation (keep the same as before)
+  Future<String?> _getEstablishmentHttpNearby(
+      double latitude, double longitude, String mapKey) async {
+    try {
+      final establishmentUrl = Uri.parse(
+          "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+          "?location=$latitude,$longitude"
+          "&radius=50"
+          "&type=establishment"
+          "&key=$mapKey");
+
+      print("Searching for establishments at: $latitude, $longitude");
+
+      final establishmentResponse =
+          await http.get(establishmentUrl).timeout(Duration(seconds: 5));
+
+      if (establishmentResponse.statusCode == 200) {
+        final establishmentData = jsonDecode(establishmentResponse.body);
+        final establishmentResults =
+            establishmentData['results'] as List<dynamic>;
+
+        print("Found ${establishmentResults.length} establishments");
+
+        if (establishmentResults.isNotEmpty) {
+          final place = establishmentResults.first;
+          final name = place['name'];
+          final vicinity = place['vicinity'];
+
+          if (name != null) {
+            String establishmentName;
+            if (vicinity != null && vicinity.toString().isNotEmpty) {
+              establishmentName = '$name, $vicinity';
+            } else {
+              establishmentName = name.toString();
+            }
+
+            print("Selected establishment: $establishmentName");
+            return establishmentName;
+          }
+        }
+      }
+
+      return null;
+    } catch (e) {
+      print("Error in HTTP establishment detection: $e");
+      return null;
+    }
+  }
+
   Future<String> searchAddressForGeographicCoordinates({
     required double latitude,
     required double longitude,
@@ -825,6 +1250,27 @@ class TripsNotifier extends StateNotifier<TripsState> {
     }
   }
 
+  Future<String> getAddressFromCoordinates(double lat, double lng) async {
+    try {
+      final mapKey = dotenv.env['GOOGLE_MAPS_API_KEY'];
+      final url =
+          'https://maps.googleapis.com/maps/api/geocode/json?latlng=$lat,$lng&key=$mapKey';
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+
+        if (data['status'] == 'OK' && data['results'].isNotEmpty) {
+          return data['results'][0]['formatted_address'];
+        }
+      }
+      throw Exception('Geocoding failed');
+    } catch (e) {
+      throw Exception('Error: $e');
+    }
+  }
+
 // Helper method for HTTP fallback
   Future<List<PredictedPlacesModel>> _fallbackToHttpApi(
       String inputText, double userLat, double userLng, String mapKey) async {
@@ -1237,7 +1683,7 @@ class TripsNotifier extends StateNotifier<TripsState> {
   Future<List<UserModel>> fetchNearbyDriversForLocation({
     required double latitude,
     required double longitude,
-    double radiusKm = 10.0,
+    double radiusKm = 3.0,
   }) async {
     state = state.copyWith(isGettingNearbyDriversLoading: true);
 
