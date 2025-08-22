@@ -13,7 +13,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   configureDependencies();
   final sharedPrefs = await SharedPreferences.getInstance();
-
+// print
   await dotenv.load(fileName: ".env");
   // await dotenv.load(fileName: "assets/.env");
   await Firebase.initializeApp(
