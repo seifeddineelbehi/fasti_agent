@@ -84,16 +84,17 @@ Future<Uint8List> compressImage(File imageFile, {int maxSizeKB = 500}) async {
   return compressedBytes;
 }
 
-double calculateEconomicDisplayedPrice(int distanceMeters, double kmPrice) {
+double calculateEconomicDisplayedPrice(
+    int distanceMeters, double kmPrice, double lessKmPrice) {
   final distanceKm = distanceMeters / 1000;
 
   if (distanceKm <= 2.5) {
-    return 800;
+    return lessKmPrice;
   } else {
     // Subtract 2.5km base, then round up remaining km
-    final extraDistance = (distanceKm - 2.5).ceil();
-    final totalPrice = 800 + (extraDistance * kmPrice);
-    return totalPrice;
+    final extraDistance = distanceKm - 2.5;
+    final totalPrice = lessKmPrice + (extraDistance * kmPrice);
+    return totalPrice.ceil() * 1.0;
   }
 }
 

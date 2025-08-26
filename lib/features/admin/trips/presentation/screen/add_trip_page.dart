@@ -503,6 +503,7 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
       return calculateEconomicDisplayedPrice(
         tripsState.totalDistanceMeters,
         admin.kmPrice,
+        admin.lessThenTwoKPrice,
       );
     } else if (travelClass == 'luxury suv') {
       return calculateLuxurySuvPrice(
@@ -891,6 +892,10 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
                             .read(driversNotifierProvider)
                             .adminModel!
                             .kmPrice,
+                        lessKmPrice: ref
+                            .read(driversNotifierProvider)
+                            .adminModel!
+                            .lessThenTwoKPrice,
                         luxuryPercentage: ref
                             .read(driversNotifierProvider)
                             .adminModel!

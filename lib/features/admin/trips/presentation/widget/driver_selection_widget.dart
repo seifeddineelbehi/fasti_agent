@@ -16,6 +16,7 @@ class DriverSelectionWidget extends ConsumerWidget {
   final double estimatedFare;
   final int totalDistanceMeters;
   final double kmPrice;
+  final double lessKmPrice;
   final int luxuryPercentage;
   final int luxurySuvPercentage;
 
@@ -31,6 +32,7 @@ class DriverSelectionWidget extends ConsumerWidget {
     required this.estimatedFare,
     required this.totalDistanceMeters,
     required this.kmPrice,
+    required this.lessKmPrice,
     required this.luxuryPercentage,
     required this.luxurySuvPercentage,
   });
@@ -61,7 +63,8 @@ class DriverSelectionWidget extends ConsumerWidget {
         driver.driverInfo!.vehicleInfo.travelClass.toLowerCase();
 
     if (travelClass == 'economic') {
-      return calculateEconomicDisplayedPrice(totalDistanceMeters, kmPrice);
+      return calculateEconomicDisplayedPrice(
+          totalDistanceMeters, kmPrice, lessKmPrice);
     } else if (travelClass == 'luxury suv') {
       return calculateLuxurySuvPrice(
         distanceMeters: totalDistanceMeters,
