@@ -510,6 +510,7 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
         distanceMeters: tripsState.totalDistanceMeters,
         kmPrice: admin.kmPrice,
         luxurySuvPercentage: admin.luxurySuvPricePercentage,
+        lessKmPrice: admin.lessThenTwoKPrice,
       );
     } else {
       // luxury or other premium classes
@@ -517,6 +518,7 @@ class _AddTripPageState extends ConsumerState<AddTripPage> {
         distanceMeters: tripsState.totalDistanceMeters,
         kmPrice: admin.kmPrice,
         luxuryPercentage: admin.luxuryPricePercentage,
+        lessKmPrice: admin.lessThenTwoKPrice,
       );
     }
   }

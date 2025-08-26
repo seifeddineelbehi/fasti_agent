@@ -70,12 +70,14 @@ class DriverSelectionWidget extends ConsumerWidget {
         distanceMeters: totalDistanceMeters,
         kmPrice: kmPrice,
         luxurySuvPercentage: luxurySuvPercentage,
+        lessKmPrice: lessKmPrice,
       );
     } else {
       return calculateLuxuryPrice(
         distanceMeters: totalDistanceMeters,
         kmPrice: kmPrice,
         luxuryPercentage: luxuryPercentage,
+        lessKmPrice: lessKmPrice,
       );
     }
   }

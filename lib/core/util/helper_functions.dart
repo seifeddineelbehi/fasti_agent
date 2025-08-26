@@ -113,6 +113,7 @@ double calculateLuxuryPrice({
   required int distanceMeters,
   required double kmPrice,
   required int luxuryPercentage,
+  required double lessKmPrice,
 }) {
   final basePrice = calculateBasePrice(distanceMeters, kmPrice);
   return basePrice + (basePrice * luxuryPercentage / 100);
@@ -122,6 +123,7 @@ double calculateLuxurySuvPrice({
   required int distanceMeters,
   required double kmPrice,
   required int luxurySuvPercentage,
+  required double lessKmPrice,
 }) {
   final basePrice = calculateBasePrice(distanceMeters, kmPrice);
   return basePrice + (basePrice * luxurySuvPercentage / 100);
