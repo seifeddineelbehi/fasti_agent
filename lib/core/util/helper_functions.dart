@@ -98,7 +98,8 @@ double calculateEconomicDisplayedPrice(
   }
 }
 
-double calculateBasePrice(int distanceMeters, double kmPrice,double lessKmPrice) {
+double calculateBasePrice(
+    int distanceMeters, double kmPrice, double lessKmPrice) {
   final distanceKm = distanceMeters / 1000;
 
   if (distanceKm <= 2.5) {
@@ -116,7 +117,7 @@ double calculateLuxuryPrice({
   required int luxuryPercentage,
   required double lessKmPrice,
 }) {
-  final basePrice = calculateBasePrice(distanceMeters, kmPrice);
+  final basePrice = calculateBasePrice(distanceMeters, kmPrice, lessKmPrice);
   return basePrice + (basePrice * luxuryPercentage / 100);
 }
 
@@ -126,7 +127,7 @@ double calculateLuxurySuvPrice({
   required int luxurySuvPercentage,
   required double lessKmPrice,
 }) {
-  final basePrice = calculateBasePrice(distanceMeters, kmPrice);
+  final basePrice = calculateBasePrice(distanceMeters, kmPrice, lessKmPrice);
   return basePrice + (basePrice * luxurySuvPercentage / 100);
 }
 
