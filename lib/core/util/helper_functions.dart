@@ -98,14 +98,15 @@ double calculateEconomicDisplayedPrice(
   }
 }
 
-double calculateBasePrice(int distanceMeters, double kmPrice) {
+double calculateBasePrice(int distanceMeters, double kmPrice,double lessKmPrice) {
   final distanceKm = distanceMeters / 1000;
 
   if (distanceKm <= 2.5) {
-    return 800;
+    return lessKmPrice;
   } else {
-    final extraDistance = (distanceKm - 2.5).ceil();
-    return 800 + (extraDistance * kmPrice);
+    final extraDistance = distanceKm - 2.5;
+    final totalPrice = lessKmPrice + (extraDistance * kmPrice);
+    return totalPrice.ceil() * 1.0;
   }
 }
 
