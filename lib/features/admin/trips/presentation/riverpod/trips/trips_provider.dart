@@ -353,43 +353,370 @@ class TripsNotifier extends StateNotifier<TripsState> {
         throw Exception('Google Maps API key not found');
       }
 
+      // First, get basic address information
       final data = await Geocoder2.getDataFromCoordinates(
         latitude: latitude,
         longitude: longitude,
         googleMapApiKey: mapKey,
       );
 
-      final address = data.address;
-      final parts = address.split(',').map((e) => e.trim()).toList();
-      final city = data.city?.trim().toLowerCase();
-      final country = data.country?.trim().toLowerCase();
-      final plusCodeRegex = RegExp(r'^[A-Z0-9]{4,}\+[A-Z0-9]{2,}$');
-      String? streetName;
-      for (final part in parts) {
-        final partLower = part.toLowerCase();
-        if (part.isNotEmpty &&
-            !plusCodeRegex.hasMatch(part) &&
-            partLower != city &&
-            partLower != country) {
-          streetName = part;
-          break;
+      final city = data.city?.trim() ?? '';
+      final stateName = data.state?.trim() ?? '';
+      final country = data.country?.trim() ?? '';
+
+      // Try to find nearest place (with CORS handling for web)
+      final nearestPlace = await _findNearestPlaceWeb(
+        latitude: latitude,
+        longitude: longitude,
+        apiKey: mapKey,
+      );
+
+      // Build address with nearest place name
+      String finalAddress;
+      if (nearestPlace != null && nearestPlace.isNotEmpty) {
+        // Use nearest place as the primary identifier
+        List<String> addressParts = [nearestPlace];
+
+        if (city.isNotEmpty &&
+            !nearestPlace.toLowerCase().contains(city.toLowerCase())) {
+          addressParts.add(city);
         }
+
+        if (stateName.isNotEmpty) {
+          addressParts.add(stateName);
+        }
+
+        if (country.isNotEmpty) {
+          addressParts.add(country);
+        }
+
+        finalAddress = addressParts.join(', ');
+      } else {
+        // Fallback to the original logic if no place found
+        final address = data.address;
+        final parts = address.split(',').map((e) => e.trim()).toList();
+        final cityLower = city.toLowerCase();
+        final countryLower = country.toLowerCase();
+        final plusCodeRegex = RegExp(r'^[A-Z0-9]{4,}\+[A-Z0-9]{2,}$');
+
+        String? streetName;
+        for (final part in parts) {
+          final partLower = part.toLowerCase();
+          if (part.isNotEmpty &&
+              !plusCodeRegex.hasMatch(part) &&
+              partLower != cityLower &&
+              partLower != countryLower) {
+            streetName = part;
+            break;
+          }
+        }
+
+        finalAddress = (streetName == null ||
+                streetName.toLowerCase().contains(cityLower) ||
+                streetName.toLowerCase().contains(countryLower))
+            ? city.isNotEmpty
+                ? '$city${stateName.isNotEmpty ? ', $stateName' : ''}${country.isNotEmpty ? ', $country' : ''}'
+                : 'Unknown Location'
+            : '$streetName${city.isNotEmpty ? ', $city' : ''}${stateName.isNotEmpty ? ', $stateName' : ''}${country.isNotEmpty ? ', $country' : ''}';
       }
 
-      final cleanedAddress = (streetName == null ||
-              streetName.toLowerCase().contains(city ?? '') ||
-              streetName.toLowerCase().contains(country ?? ''))
-          ? "Unnamed Street, $city"
-          : "$streetName, $city";
-
       state = state.copyWith(isFetchingAddress: false);
-      return cleanedAddress;
+      return finalAddress;
     } catch (e) {
       log("Error fetching address: $e");
       state = state.copyWith(isFetchingAddress: false);
       return 'Unknown Location';
     }
   }
+
+  Future<String?> _findNearestPlaceWeb({
+    required double latitude,
+    required double longitude,
+    required String apiKey,
+  }) async {
+    try {
+      final completer = Completer<String?>();
+      final google = js.context['google'];
+
+      if (google == null || google['maps'] == null) {
+        print("Google Maps not loaded");
+        return null;
+      }
+
+      // Import the places library
+      final importLibrary = js.context['google']['maps']['importLibrary'];
+      if (importLibrary != null) {
+        try {
+          final importCompleter = Completer<void>();
+          final promise =
+              importLibrary.callMethod('call', [js.context, 'places']);
+
+          promise.callMethod('then', [
+            js.allowInterop((result) {
+              importCompleter.complete();
+            })
+          ]);
+
+          promise.callMethod('catch', [
+            js.allowInterop((error) {
+              print("Error importing places library: $error");
+              importCompleter.completeError(error);
+            })
+          ]);
+
+          await importCompleter.future;
+        } catch (e) {
+          print("Error during library import: $e");
+        }
+      }
+
+      // Use the correct new Places API syntax
+      try {
+        // Access the Place class and SearchNearbyRankPreference
+        final placesLibrary = js.context['google']['maps']['places'];
+        if (placesLibrary == null) {
+          print("Places library not available");
+          return null;
+        }
+
+        final Place = placesLibrary['Place'];
+        final SearchNearbyRankPreference =
+            placesLibrary['SearchNearbyRankPreference'];
+
+        if (Place != null && Place['searchNearby'] != null) {
+          print("Using Place.searchNearby with correct format");
+
+          // Create LatLng object for center
+          final center = js.JsObject(
+              js.context['google']['maps']['LatLng'], [latitude, longitude]);
+
+          // Create the request object with correct format
+          final request = js.JsObject.jsify({
+            // Required parameters
+            'fields': [
+              'displayName',
+              'location',
+              'id'
+            ], // Required fields array
+            'locationRestriction': js.JsObject.jsify({
+              'center': center, // Use LatLng object
+              'radius': 2000.0, // Radius in meters
+            }),
+            // Optional parameters for better results
+            'maxResultCount': 10,
+            'rankPreference': SearchNearbyRankPreference != null
+                ? SearchNearbyRankPreference['DISTANCE']
+                : 'DISTANCE', // Rank by distance (closest first)
+            // No includedPrimaryTypes = get ALL place types
+          });
+
+          // Call the searchNearby method
+          final promise = Place.callMethod('searchNearby', [request]);
+
+          promise.callMethod('then', [
+            js.allowInterop((result) {
+              try {
+                print("Place.searchNearby succeeded");
+                final places = result['places'] as List<dynamic>? ?? [];
+
+                if (places.isNotEmpty) {
+                  print("Found ${places.length} places");
+
+                  // Get the first place (closest due to DISTANCE ranking)
+                  final closestPlace = places.first;
+                  String? placeName;
+
+                  // Extract place name using multiple methods
+                  final displayName = closestPlace['displayName'];
+                  if (displayName != null) {
+                    if (displayName is String) {
+                      placeName = displayName;
+                    } else if (displayName['text'] != null) {
+                      placeName = displayName['text'].toString();
+                    }
+                  }
+
+                  // Fallback to name field
+                  if (placeName == null || placeName.isEmpty) {
+                    placeName = closestPlace['name']?.toString();
+                  }
+                  if (placeName != null && placeName.isNotEmpty) {
+                    completer.complete(placeName);
+                  } else {
+                    print("Place found but no valid name");
+                    completer.complete(null);
+                  }
+                } else {
+                  print("No places found");
+                  completer.complete(null);
+                }
+              } catch (e) {
+                print("Error processing searchNearby results: $e");
+                completer.complete(null);
+              }
+            })
+          ]);
+
+          promise.callMethod('catch', [
+            js.allowInterop((error) {
+              print("Error in Place.searchNearby: $error");
+              completer.complete(null);
+            })
+          ]);
+        } else {
+          print("Place.searchNearby not available");
+          completer.complete(null);
+        }
+      } catch (e) {
+        print("Error setting up new Places API: $e");
+        completer.complete(null);
+      }
+
+      return completer.future;
+    } catch (e) {
+      print("Error in web places search: $e");
+      return null;
+    }
+  }
+
+// Process results from the new Places API
+  void _processNewAPIResult(dynamic result, Completer<String?> completer,
+      double userLat, double userLng) {
+    try {
+      final places = result['places'] as List<dynamic>? ?? [];
+
+      if (places.isNotEmpty) {
+        // Find the closest place (they should already be sorted by distance)
+        String? closestPlaceName;
+        double? closestDistance;
+
+        for (final place in places) {
+          try {
+            // Extract place name
+            String? placeName;
+            final displayName = place['displayName'];
+            if (displayName != null) {
+              if (displayName is String) {
+                placeName = displayName;
+              } else if (displayName['text'] != null) {
+                placeName = displayName['text'].toString();
+              }
+            }
+
+            // Fallback to other name fields
+            if (placeName == null || placeName.isEmpty) {
+              placeName = place['name']?.toString();
+            }
+
+            if (placeName != null && placeName.isNotEmpty) {
+              // Try to get location for distance calculation (optional)
+              final location = place['location'];
+              if (location != null) {
+                double? placeLat;
+                double? placeLng;
+
+                // Extract coordinates using multiple methods
+                try {
+                  if (location['lat'] != null && location['lng'] != null) {
+                    placeLat = (location['lat'] as num?)?.toDouble();
+                    placeLng = (location['lng'] as num?)?.toDouble();
+                  } else if (location['latitude'] != null &&
+                      location['longitude'] != null) {
+                    placeLat = (location['latitude'] as num?)?.toDouble();
+                    placeLng = (location['longitude'] as num?)?.toDouble();
+                  }
+                } catch (e) {
+                  // Coordinate extraction failed, continue without distance calculation
+                }
+
+                if (placeLat != null && placeLng != null) {
+                  final distance =
+                      calculateDistance(userLat, userLng, placeLat, placeLng);
+                  if (closestDistance == null || distance < closestDistance) {
+                    closestDistance = distance;
+                    closestPlaceName = placeName;
+                  }
+                } else if (closestPlaceName == null) {
+                  // If we can't calculate distance, take the first valid name
+                  // (should be closest due to rankPreference: DISTANCE)
+                  closestPlaceName = placeName;
+                }
+              } else if (closestPlaceName == null) {
+                // No location data, but take first valid name (should be closest)
+                closestPlaceName = placeName;
+              }
+            }
+          } catch (e) {
+            print("Error processing individual place: $e");
+            continue;
+          }
+        }
+
+        if (closestPlaceName != null) {
+          if (closestDistance != null) {
+            print(
+                "Closest place via new API: $closestPlaceName at ${closestDistance.toStringAsFixed(0)}m");
+          } else {
+            print("Closest place via new API: $closestPlaceName");
+          }
+          completer.complete(closestPlaceName);
+        } else {
+          print("Places found but no valid names extracted");
+          completer.complete(null);
+        }
+      } else {
+        print("No places found in new API search");
+        completer.complete(null);
+      }
+    } catch (e) {
+      print("Error processing new API results: $e");
+      completer.complete(null);
+    }
+  }
+
+  void _tryRequestFormats(
+      dynamic searchNearbyFunction,
+      List<js.JsObject> formats,
+      int index,
+      Completer<String?> completer,
+      double latitude,
+      double longitude) {
+    if (index >= formats.length) {
+      print("All request formats failed");
+      completer.complete(null);
+      return;
+    }
+
+    final request = formats[index];
+    print("Trying request format ${index + 1}");
+
+    try {
+      final promise = searchNearbyFunction.callMethod('call', [null, request]);
+
+      promise.callMethod('then', [
+        js.allowInterop((result) {
+          print("Request format ${index + 1} succeeded");
+          _processNewAPIResult(result, completer, latitude, longitude);
+        })
+      ]);
+
+      promise.callMethod('catch', [
+        js.allowInterop((error) {
+          print("Request format ${index + 1} failed: $error");
+          // Try next format
+          _tryRequestFormats(searchNearbyFunction, formats, index + 1,
+              completer, latitude, longitude);
+        })
+      ]);
+    } catch (e) {
+      print("Error with request format ${index + 1}: $e");
+      // Try next format
+      _tryRequestFormats(searchNearbyFunction, formats, index + 1, completer,
+          latitude, longitude);
+    }
+  }
+
+// Backup method using the new Places API if PlacesService fails
 
   Future<String> searchAddressForGeographicCoordinates({
     required double latitude,
