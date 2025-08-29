@@ -1617,29 +1617,64 @@ class TripsNotifier extends StateNotifier<TripsState> {
 
       // Filter drivers by distance
       activeDriversData.forEach((driverId, locationData) {
-        if (locationData != null) {
-          // GeoFire stores location in 'g' field as [latitude, longitude]
-          var geoData = locationData['l'];
-          if (geoData != null && geoData is List && geoData.length >= 2) {
-            double driverLat = geoData[0].toDouble();
-            double driverLng = geoData[1].toDouble();
+        if (locationData != null && locationData is Map) {
+          double? driverLat;
+          double? driverLng;
 
+          // Try to extract coordinates from different possible formats
+          final locationMap = Map<String, dynamic>.from(locationData);
+
+          // Check for direct latitude/longitude format (new format)
+          if (locationMap.containsKey('latitude') &&
+              locationMap.containsKey('longitude')) {
+            driverLat = _parseDouble(locationMap['latitude']);
+            driverLng = _parseDouble(locationMap['longitude']);
+          }
+          // Check for lat/lng format
+          else if (locationMap.containsKey('lat') &&
+              locationMap.containsKey('lng')) {
+            driverLat = _parseDouble(locationMap['lat']);
+            driverLng = _parseDouble(locationMap['lng']);
+          }
+          // Check for GeoFire format (legacy support)
+          else if (locationMap.containsKey('l')) {
+            var geoData = locationMap['l'];
+            if (geoData != null && geoData is List && geoData.length >= 2) {
+              driverLat = _parseDouble(geoData[0]);
+              driverLng = _parseDouble(geoData[1]);
+            }
+          }
+
+          // Validate coordinates and check distance
+          if (driverLat != null &&
+              driverLng != null &&
+              _isValidCoordinate(driverLat, driverLng)) {
             // Calculate distance from pickup location
             double distance =
                 calculateDistance(centerLat, centerLng, driverLat, driverLng);
             double distanceKm = distance / 1000;
 
             if (distanceKm <= radiusKm) {
-              nearbyDriverIds.add(driverId.toString());
-              print(
-                  "Found nearby driver: $driverId at ${distanceKm.toStringAsFixed(1)}km");
+              // Check if driver is actually active
+              String status = locationMap['status']?.toString() ?? 'unknown';
+
+              // Only include active drivers
+              if (status == 'active') {
+                nearbyDriverIds.add(driverId.toString());
+                print(
+                    "Found nearby active driver: $driverId at ${distanceKm.toStringAsFixed(1)}km");
+              } else {
+                print("Skipping inactive driver: $driverId (status: $status)");
+              }
             }
+          } else {
+            print("Invalid coordinates for driver: $driverId");
           }
         }
       });
 
       if (nearbyDriverIds.isEmpty) {
-        print("No drivers found within ${radiusKm}km radius");
+        print("No active drivers found within ${radiusKm}km radius");
         return [];
       }
 
@@ -1666,11 +1701,38 @@ class TripsNotifier extends StateNotifier<TripsState> {
         return distanceA.compareTo(distanceB);
       });
 
+      print("Returning ${nearbyDrivers.length} nearby active drivers");
       return nearbyDrivers;
     } catch (e) {
       print("Error fetching from Realtime Database: $e");
       return [];
     }
+  }
+
+  /// Helper method to safely parse double values
+  double? _parseDouble(dynamic value) {
+    try {
+      if (value == null) return null;
+      if (value is double) return value;
+      if (value is int) return value.toDouble();
+      if (value is String) return double.tryParse(value);
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Helper method to validate coordinates
+  bool _isValidCoordinate(double lat, double lng) {
+    return !lat.isNaN &&
+        !lng.isNaN &&
+        !lat.isInfinite &&
+        !lng.isInfinite &&
+        lat >= -90 &&
+        lat <= 90 &&
+        lng >= -180 &&
+        lng <= 180 &&
+        !(lat == 0.0 && lng == 0.0);
   }
 
   Future<List<UserModel>> _fetchDriverDetailsFromIds(
